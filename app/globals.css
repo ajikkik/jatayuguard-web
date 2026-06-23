@@ -1,0 +1,141 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --kain: #F7F3E8;
+  --kain-dim: #EDE6D6;
+  --tinta: #1C1410;
+  --tinta-soft: #5A4A3D;
+  --soga: #8B4A2B;
+  --soga-deep: #6B3820;
+  --indigo: #2E5249;
+  --indigo-bg: #E3EBE6;
+  --bata: #A13D2E;
+  --bata-bg: #F3E2DD;
+  --kunyit: #B8843E;
+  --kunyit-bg: #F4E8D3;
+  --line: #D9CDB8;
+
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background: var(--kain);
+  color: var(--tinta);
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+/* ============================================
+   TEKSTUR LATAR: garis horizontal halus,
+   mengingatkan pada helai kain mori yang ditenun.
+   ============================================ */
+.bg-kain-bertekstur {
+  background-color: var(--kain);
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0px,
+    transparent 23px,
+    rgba(28, 20, 16, 0.025) 24px
+  );
+}
+
+/* ============================================
+   SIGNATURE ELEMENT: Diamond status (motif kawung)
+   Pengganti badge/pill generik. Bentuk diamond dengan
+   border ganda, seperti segel/cap pada kain.
+   ============================================ */
+.segel-status {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+.segel-status::before,
+.segel-status::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+}
+
+.segel-status::before {
+  inset: 0;
+}
+
+.segel-status::after {
+  inset: 3px;
+}
+
+.segel-aman::before { background: var(--indigo); opacity: 0.25; }
+.segel-aman::after { background: var(--indigo); }
+
+.segel-waspada::before { background: var(--kunyit); opacity: 0.25; }
+.segel-waspada::after { background: var(--kunyit); }
+
+.segel-bahaya::before { background: var(--bata); opacity: 0.3; }
+.segel-bahaya::after { background: var(--bata); animation: detak 1.6s ease-in-out infinite; }
+
+@keyframes detak {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segel-bahaya::after { animation: none; }
+}
+
+/* ============================================
+   Label eyebrow bergaya cap/stempel arsip
+   ============================================ */
+.label-arsip {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tinta-soft);
+}
+
+/* ============================================
+   Kartu dengan "jahitan" sudut - border ganda tipis
+   ============================================ */
+.kartu-kain {
+  background: var(--kain);
+  border: 1px solid var(--line);
+  position: relative;
+}
+
+.kartu-kain::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid var(--line);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Scrollbar halus menyatu dengan tema */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+/* Fokus keyboard yang jelas, sesuai aksesibilitas */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--soga);
+  outline-offset: 2px;
+}
