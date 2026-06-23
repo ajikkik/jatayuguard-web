@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type Device = {
   id: string;
@@ -113,6 +114,7 @@ export default function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-3 pt-1">
+            <ThemeToggle />
             <Link
               href="/profile"
               className="border border-[var(--line)] px-4 py-2 text-sm text-[var(--tinta)] transition hover:border-[var(--soga)] hover:text-[var(--soga)]"

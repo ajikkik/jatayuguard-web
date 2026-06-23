@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function ProfilePage() {
   const supabase = createClient();
@@ -60,12 +61,15 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen px-6 py-10 sm:px-10">
       <div className="mx-auto max-w-lg">
-        <Link
-          href="/dashboard"
-          className="mb-8 inline-block text-sm text-[var(--tinta-soft)] transition hover:text-[var(--soga)]"
-        >
-          ← Kembali
-        </Link>
+        <div className="mb-8 flex items-center justify-between">
+          <Link
+            href="/dashboard"
+            className="inline-block text-sm text-[var(--tinta-soft)] transition hover:text-[var(--soga)]"
+          >
+            ← Kembali
+          </Link>
+          <ThemeToggle />
+        </div>
 
         <p className="label-arsip mb-2">Profil</p>
         <h1
@@ -90,7 +94,7 @@ export default function ProfilePage() {
             value={chatId}
             onChange={(e) => setChatId(e.target.value)}
             placeholder="contoh: 123456789"
-            className="w-full border border-[var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--soga)]"
+            className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2.5 text-sm outline-none focus:border-[var(--soga)]"
           />
 
           <div className="mt-5 flex items-center gap-4">

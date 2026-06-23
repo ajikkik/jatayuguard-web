@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const BATAS_PERCOBAAN = 5;
 const DURASI_KUNCI_MS = 60_000; // 1 menit
@@ -72,6 +73,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="absolute right-6 top-6">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-[400px]">
         {/* Eyebrow + nama produk */}
         <div className="mb-8 text-center">
@@ -94,7 +98,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-[var(--line)] bg-white px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
                 placeholder="nama@perusahaan.com"
               />
             </div>
@@ -106,7 +110,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-[var(--line)] bg-white px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
                 placeholder="••••••••"
               />
             </div>

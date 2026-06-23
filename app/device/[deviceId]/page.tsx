@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type Device = {
   id: string;
@@ -119,12 +120,15 @@ export default function DeviceDetailPage() {
   return (
     <div className="min-h-screen px-6 py-10 sm:px-10">
       <div className="mx-auto max-w-3xl">
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="mb-8 text-sm text-[var(--tinta-soft)] transition hover:text-[var(--soga)]"
-        >
-          ← Kembali
-        </button>
+        <div className="mb-8 flex items-center justify-between">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-sm text-[var(--tinta-soft)] transition hover:text-[var(--soga)]"
+          >
+            ← Kembali
+          </button>
+          <ThemeToggle />
+        </div>
 
         <p className="label-arsip mb-2">Catatan Alat · {device.device_id}</p>
         <h1
@@ -143,7 +147,7 @@ export default function DeviceDetailPage() {
               <input
                 value={namaInput}
                 onChange={(e) => setNamaInput(e.target.value)}
-                className="w-full border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
               />
             </div>
             <div>
@@ -153,7 +157,7 @@ export default function DeviceDetailPage() {
                 step="0.1"
                 value={batasSuhuInput}
                 onChange={(e) => setBatasSuhuInput(e.target.value)}
-                className="w-full border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
               />
             </div>
             <div>
@@ -163,7 +167,7 @@ export default function DeviceDetailPage() {
                 step="0.1"
                 value={batasHumInput}
                 onChange={(e) => setBatasHumInput(e.target.value)}
-                className="w-full border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--soga)]"
               />
             </div>
           </div>
