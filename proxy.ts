@@ -28,6 +28,13 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const isResetPasswordPage = request.nextUrl.pathname.startsWith("/reset-password");
+
+  // Halaman reset-password punya alurnya sendiri (session sementara dari
+  // link email), jadi dilewati dari logic redirect login/dashboard biasa.
+  if (isResetPasswordPage) {
+    return supabaseResponse;
+  }
 
   // Belum login & bukan di halaman login -> redirect ke login
   if (!user && !isLoginPage) {

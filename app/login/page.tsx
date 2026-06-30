@@ -20,6 +20,10 @@ export default function LoginPage() {
   const [terkunciSampai, setTerkunciSampai] = useState<number | null>(null);
   const [sisaDetik, setSisaDetik] = useState(0);
 
+  const [modeLupaPassword, setModeLupaPassword] = useState(false);
+  const [emailReset, setEmailReset] = useState("");
+  const [statusReset, setStatusReset] = useState<"idle" | "loading" | "terkirim" | "error">("idle");
+
   // Hitung mundur saat akun sementara terkunci
   useEffect(() => {
     if (!terkunciSampai) return;
@@ -71,6 +75,17 @@ export default function LoginPage() {
 
   const sedangTerkunci = !!terkunciSampai && sisaDetik > 0;
 
+  async function handleKirimReset(e: React.FormEvent) {
+    e.preventDefault();
+    setStatusReset("loading");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(emailReset, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    setStatusReset(error ? "error" : "terkirim");
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="absolute right-6 top-6">
@@ -90,49 +105,117 @@ export default function LoginPage() {
 
         {/* Form dengan border ganda ala label kain */}
         <div className="kartu-kain px-8 py-9">
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="label-arsip mb-2 block">Surel</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
-                placeholder="nama@perusahaan.com"
-              />
-            </div>
+          {modeLupaPassword ? (
+            statusReset === "terkirim" ? (
+              <div className="text-center">
+                <p className="mb-4 text-sm text-[var(--tinta)]">
+                  Tautan untuk atur ulang kata sandi sudah dikirim ke{" "}
+                  <strong>{emailReset}</strong>. Periksa kotak masuk (dan folder spam).
+                </p>
+                <button
+                  onClick={() => {
+                    setModeLupaPassword(false);
+                    setStatusReset("idle");
+                  }}
+                  className="text-sm text-[var(--soga)] underline"
+                >
+                  Kembali ke halaman masuk
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleKirimReset} className="space-y-5">
+                <p className="text-sm text-[var(--tinta-soft)]">
+                  Masukkan email akunmu, kami kirimkan tautan untuk atur ulang kata sandi.
+                </p>
+                <div>
+                  <label className="label-arsip mb-2 block">Surel</label>
+                  <input
+                    type="email"
+                    required
+                    value={emailReset}
+                    onChange={(e) => setEmailReset(e.target.value)}
+                    className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
+                    placeholder="nama@perusahaan.com"
+                  />
+                </div>
 
-            <div>
-              <label className="label-arsip mb-2 block">Kata sandi</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
-                placeholder="••••••••"
-              />
-            </div>
+                {statusReset === "error" && (
+                  <p className="border-l-2 border-[var(--bata)] bg-[var(--bata-bg)] px-3 py-2 text-sm text-[var(--bata)]">
+                    Gagal mengirim tautan. Periksa kembali alamat email.
+                  </p>
+                )}
 
-            {error && (
-              <p className="border-l-2 border-[var(--bata)] bg-[var(--bata-bg)] px-3 py-2 text-sm text-[var(--bata)]">
-                {error}
-              </p>
-            )}
+                <button
+                  type="submit"
+                  disabled={statusReset === "loading"}
+                  className="w-full bg-[var(--soga)] py-3 text-[15px] font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
+                >
+                  {statusReset === "loading" ? "Mengirim…" : "Kirim tautan reset"}
+                </button>
 
-            <button
-              type="submit"
-              disabled={loading || sedangTerkunci}
-              className="w-full bg-[var(--soga)] py-3 text-[15px] font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
-            >
-              {sedangTerkunci
-                ? `Coba lagi dalam ${sisaDetik}s`
-                : loading
-                ? "Memeriksa…"
-                : "Masuk"}
-            </button>
-          </form>
+                <button
+                  type="button"
+                  onClick={() => setModeLupaPassword(false)}
+                  className="w-full text-center text-sm text-[var(--tinta-soft)] hover:text-[var(--soga)]"
+                >
+                  ← Kembali ke halaman masuk
+                </button>
+              </form>
+            )
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div>
+                <label className="label-arsip mb-2 block">Surel</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
+                  placeholder="nama@perusahaan.com"
+                />
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="label-arsip block">Kata sandi</label>
+                  <button
+                    type="button"
+                    onClick={() => setModeLupaPassword(true)}
+                    className="text-xs text-[var(--soga)] hover:underline"
+                  >
+                    Lupa kata sandi?
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-4 py-2.5 text-[15px] text-[var(--tinta)] outline-none transition focus:border-[var(--soga)]"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {error && (
+                <p className="border-l-2 border-[var(--bata)] bg-[var(--bata-bg)] px-3 py-2 text-sm text-[var(--bata)]">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || sedangTerkunci}
+                className="w-full bg-[var(--soga)] py-3 text-[15px] font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
+              >
+                {sedangTerkunci
+                  ? `Coba lagi dalam ${sisaDetik}s`
+                  : loading
+                  ? "Memeriksa…"
+                  : "Masuk"}
+              </button>
+            </form>
+          )}
         </div>
 
         <p className="mt-6 text-center text-xs text-[var(--tinta-soft)]">

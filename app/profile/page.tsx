@@ -13,6 +13,12 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const [passwordBaru, setPasswordBaru] = useState("");
+  const [konfirmasiPassword, setKonfirmasiPassword] = useState("");
+  const [errorPassword, setErrorPassword] = useState<string | null>(null);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordTersimpan, setPasswordTersimpan] = useState(false);
+
   useEffect(() => {
     async function muat() {
       const { data: userData } = await supabase.auth.getUser();
@@ -48,6 +54,35 @@ export default function ProfilePage() {
 
     setSaving(false);
     if (!error) setSaved(true);
+  }
+
+  async function handleGantiPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorPassword(null);
+    setPasswordTersimpan(false);
+
+    if (passwordBaru.length < 6) {
+      setErrorPassword("Kata sandi minimal 6 karakter.");
+      return;
+    }
+
+    if (passwordBaru !== konfirmasiPassword) {
+      setErrorPassword("Konfirmasi kata sandi tidak cocok.");
+      return;
+    }
+
+    setSavingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: passwordBaru });
+    setSavingPassword(false);
+
+    if (error) {
+      setErrorPassword("Gagal mengubah kata sandi. Coba lagi.");
+      return;
+    }
+
+    setPasswordTersimpan(true);
+    setPasswordBaru("");
+    setKonfirmasiPassword("");
   }
 
   if (loading) {
@@ -106,6 +141,55 @@ export default function ProfilePage() {
               {saving ? "Menyimpan…" : "Simpan"}
             </button>
             {saved && <span className="text-sm text-[var(--indigo)]">Tersimpan.</span>}
+          </div>
+        </form>
+
+        <form onSubmit={handleGantiPassword} className="kartu-kain mt-6 px-7 py-7">
+          <p className="label-arsip mb-2">Ganti Kata Sandi</p>
+          <p className="mb-5 text-sm text-[var(--tinta-soft)]">
+            Pastikan kata sandi baru mudah kamu ingat tapi sulit ditebak orang lain.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="label-arsip mb-2 block !text-[10px]">Kata sandi baru</label>
+              <input
+                type="password"
+                value={passwordBaru}
+                onChange={(e) => setPasswordBaru(e.target.value)}
+                placeholder="Minimal 6 karakter"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2.5 text-sm outline-none focus:border-[var(--soga)]"
+              />
+            </div>
+            <div>
+              <label className="label-arsip mb-2 block !text-[10px]">Konfirmasi kata sandi</label>
+              <input
+                type="password"
+                value={konfirmasiPassword}
+                onChange={(e) => setKonfirmasiPassword(e.target.value)}
+                placeholder="Ulangi kata sandi baru"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-2.5 text-sm outline-none focus:border-[var(--soga)]"
+              />
+            </div>
+          </div>
+
+          {errorPassword && (
+            <p className="mt-4 border-l-2 border-[var(--bata)] bg-[var(--bata-bg)] px-3 py-2 text-sm text-[var(--bata)]">
+              {errorPassword}
+            </p>
+          )}
+
+          <div className="mt-5 flex items-center gap-4">
+            <button
+              type="submit"
+              disabled={savingPassword}
+              className="bg-[var(--soga)] px-5 py-2.5 text-sm font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
+            >
+              {savingPassword ? "Menyimpan…" : "Ganti kata sandi"}
+            </button>
+            {passwordTersimpan && (
+              <span className="text-sm text-[var(--indigo)]">Kata sandi berhasil diubah.</span>
+            )}
           </div>
         </form>
       </div>
