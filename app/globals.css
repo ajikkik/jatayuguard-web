@@ -1,8 +1,14 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* Font dimuat lewat next/font di app/layout.tsx (self-hosted, tanpa
+   permintaan ke Google), yang mengisi --font-display dan --font-body.
+   Sebelumnya di sini ada @import ke fonts.googleapis.com — itu
+   render-blocking, memicu warning build, dan bikin heading bergeser
+   saat font akhirnya tiba. */
 
 :root {
-  --kain: #F7F3E8;
+  --kain: #F7F3E8;        /* latar halaman */
+  --permukaan: #FFFDF6;   /* bidang kartu & panel, sedikit terangkat dari latar */
   --kain-dim: #EDE6D6;
   --tinta: #1C1410;
   --tinta-soft: #5A4A3D;
@@ -12,16 +18,35 @@
   --indigo-bg: #E3EBE6;
   --bata: #A13D2E;
   --bata-bg: #F3E2DD;
-  --kunyit: #B8843E;
+  --kunyit: #96692B;
   --kunyit-bg: #F4E8D3;
-  --line: #D9CDB8;
-
-  --font-display: 'Fraunces', serif;
-  --font-body: 'Inter', system-ui, sans-serif;
+  --line: #9C8A66;        /* garis struktural: batas kartu, pemisah, input */
+  --line-halus: #D9CDB8;  /* jahitan dekoratif & garis bantu grafik */
+  --input-bg: #F7F3E8;    /* kolom isian sedikit cekung dari bidang kartu */
 }
 
-* {
-  box-sizing: border-box;
+/* ============================================
+   MODE GELAP: seperti kain yang dicelup malam,
+   bukan sekadar invert warna terang.
+   Class .dark ditambahkan/dihapus dari <html> via JS.
+   ============================================ */
+html.dark {
+  --kain: #1A1612;
+  --permukaan: #252019;
+  --kain-dim: #241E18;
+  --tinta: #E8DFC8;
+  --tinta-soft: #A89B82;
+  --soga: #D08148;
+  --soga-deep: #E89860;
+  --indigo: #5A9B87;
+  --indigo-bg: #1E2E29;
+  --bata: #D9685A;
+  --bata-bg: #2E1C1A;
+  --kunyit: #D9A85C;
+  --kunyit-bg: #3A2F1C;
+  --line: #7C6F5C;
+  --line-halus: #3A332A;
+  --input-bg: #191510;
 }
 
 html, body {
@@ -29,6 +54,19 @@ html, body {
   color: var(--tinta);
   font-family: var(--font-body);
   margin: 0;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Judul bergaya arsip. Sebelumnya dipasang sebagai style inline
+   fontFamily yang diulang di lima halaman. */
+.judul {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 /* ============================================
@@ -83,6 +121,14 @@ html, body {
 .segel-bahaya::before { background: var(--bata); opacity: 0.3; }
 .segel-bahaya::after { background: var(--bata); animation: detak 1.6s ease-in-out infinite; }
 
+/* Alat yang diam: segel BERONGGA. Bedanya bentuk, bukan sekadar warna,
+   supaya "tidak ada kabar" tetap terbaca tanpa membedakan warna. */
+.segel-diam::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--tinta-soft);
+}
+.segel-diam::after { background: transparent; }
+
 @keyframes detak {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
@@ -90,6 +136,7 @@ html, body {
 
 @media (prefers-reduced-motion: reduce) {
   .segel-bahaya::after { animation: none; }
+  html, body { transition: none; }
 }
 
 /* ============================================
@@ -105,10 +152,13 @@ html, body {
 }
 
 /* ============================================
-   Kartu dengan "jahitan" sudut - border ganda tipis
+   Kartu dengan "jahitan" sudut - border ganda tipis.
+   Kartu sekarang punya bidang sendiri (--permukaan), jadi ia
+   terbaca sebagai kartu lewat bidangnya, bukan cuma garisnya —
+   sebelumnya bordernya cuma 1,42:1 dan praktis tak terlihat.
    ============================================ */
 .kartu-kain {
-  background: var(--kain);
+  background: var(--permukaan);
   border: 1px solid var(--line);
   position: relative;
 }
@@ -117,9 +167,16 @@ html, body {
   content: '';
   position: absolute;
   inset: 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-halus);
   pointer-events: none;
-  opacity: 0.6;
+  transition: border-color 0.2s ease;
+}
+
+/* Saat disorot, KEDUA garis ikut berubah. Sebelumnya hanya garis luar
+   yang berpindah warna sehingga border gandanya tampak pecah. */
+.kartu-kain:hover::before {
+  border-color: var(--soga);
+  opacity: 0.5;
 }
 
 /* Scrollbar halus menyatu dengan tema */
@@ -132,10 +189,58 @@ html, body {
   border-radius: 4px;
 }
 
+/* Tailwind v4 tidak lagi menyetel cursor:pointer pada <button> lewat
+   preflight, sehingga tombol terasa "mati" saat disorot. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ============================================
+   AUTOFILL CHROME
+   Saat browser mengisi kolom secara otomatis, Chrome memaksa latar biru
+   pucat (#E8F0FE) dan teks hitam — menimpa tema sepenuhnya, sehingga di
+   mode gelap kolomnya menyala terang seperti tambalan.
+   background-color-nya sendiri tidak bisa ditimpa; satu-satunya cara
+   adalah box-shadow inset yang menutupi seluruh kolom, ditambah
+   -webkit-text-fill-color untuk warna teksnya.
+   ============================================ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--tinta);
+  -webkit-box-shadow: 0 0 0 100px var(--input-bg) inset;
+  box-shadow: 0 0 0 100px var(--input-bg) inset;
+  caret-color: var(--tinta);
+  /* Jeda transisi yang sangat panjang menahan Chrome memulihkan warnanya
+     sendiri beberapa saat setelah kolom terisi. */
+  transition: background-color 100000s ease-in-out 0s;
+}
+
 /* Fokus keyboard yang jelas, sesuai aksesibilitas */
 a:focus-visible,
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--soga);
   outline-offset: 2px;
+}
+
+/* Lompat ke konten: tersembunyi sampai difokus lewat Tab, supaya
+   pengguna keyboard tak perlu menyusuri header di tiap halaman. */
+.lewati-ke-konten {
+  position: absolute;
+  left: 12px;
+  top: -100px;
+  z-index: 2000;
+  background: var(--permukaan);
+  color: var(--tinta);
+  border: 1px solid var(--line);
+  padding: 12px 20px;
+  font-size: 14px;
+  transition: top 0.15s ease;
+}
+
+.lewati-ke-konten:focus {
+  top: 12px;
 }

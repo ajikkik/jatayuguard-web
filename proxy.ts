@@ -28,6 +28,20 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const isResetPasswordPage = request.nextUrl.pathname.startsWith("/reset-password");
+
+  // Halaman reset-password punya alurnya sendiri (session sementara dari
+  // link email), jadi dilewati dari logic redirect login/dashboard biasa.
+  if (isResetPasswordPage) {
+    return supabaseResponse;
+  }
+
+  // Rute API harus menjawab dengan status, bukan dilempar ke halaman login.
+  // Kalau di-redirect, fetch() akan mengikuti redirect dan menerima HTML
+  // dengan status 200 — pemanggilnya mengira berhasil padahal tidak.
+  if (!user && request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Perlu masuk terlebih dahulu." }, { status: 401 });
+  }
 
   // Belum login & bukan di halaman login -> redirect ke login
   if (!user && !isLoginPage) {
