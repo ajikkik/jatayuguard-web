@@ -1,11 +1,32 @@
 
+# Sumber kebenaran untuk edge function ADA DI REPO INI.
+# Sebelumnya ketiga fungsi asli tinggal di C:\Windows\System32\supabase
+# (akibat `supabase init` dijalankan dari terminal Administrator), di luar
+# git dan tanpa cadangan — sementara repo hanya berisi kerangka kosong
+# bot-commands yang akan menimpanya begitu di-deploy.
+
+[functions.notify-telegram]
+enabled = true
+verify_jwt = false
+import_map = "./functions/notify-telegram/deno.json"
+entrypoint = "./functions/notify-telegram/index.ts"
+
+[functions.check-offline-devices]
+enabled = true
+verify_jwt = false
+import_map = "./functions/check-offline-devices/deno.json"
+entrypoint = "./functions/check-offline-devices/index.ts"
+
 [functions.bot-commands]
 enabled = true
 verify_jwt = false
 import_map = "./functions/bot-commands/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/bot-commands/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/bot-commands/*.html" ]
+
+# Dipanggil dari browser oleh user yang sedang login, jadi JWT-nya
+# DIVERIFIKASI — beda dengan tiga fungsi di atas yang dipicu webhook/cron.
+[functions.test-telegram]
+enabled = true
+verify_jwt = true
+import_map = "./functions/test-telegram/deno.json"
+entrypoint = "./functions/test-telegram/index.ts"
