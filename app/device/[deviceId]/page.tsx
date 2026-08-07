@@ -455,10 +455,14 @@ export default function DeviceDetailPage() {
           ))}
 
           {/* Unduhan menarik ulang datanya sendiri di server, jadi tidak
-              terbatas pada 1.500 baris yang sedang dimuat di halaman ini. */}
+              terbatas pada 1.500 baris yang sedang dimuat di halaman ini.
+
+              ml-auto hanya dari sm ke atas: di layar sempit baris ini
+              membungkus, dan ml-auto akan mendorong tombol sendirian ke
+              tepi kanan sehingga terlihat terdampar dari kelompoknya. */}
           <a
             href={urlEkspor}
-            className="ml-auto inline-flex h-11 items-center gap-2 border border-[var(--line)] px-4 text-sm text-[var(--tinta-soft)] transition hover:border-[var(--soga)] hover:text-[var(--soga)]"
+            className="inline-flex h-11 items-center gap-2 border border-[var(--line)] px-4 text-sm text-[var(--tinta-soft)] transition hover:border-[var(--soga)] hover:text-[var(--soga)] sm:ml-auto"
           >
             <IkonUnduh />
             Unduh CSV
@@ -532,7 +536,7 @@ export default function DeviceDetailPage() {
                     {waktuLengkap(k.mulai)}
                     {k.selesai ? ` → ${waktuLengkap(k.selesai)}` : " → masih berlangsung"}
                   </span>
-                  <span className="ml-auto text-sm text-[var(--tinta)]">
+                  <span className="text-sm text-[var(--tinta)] sm:ml-auto">
                     {formatDurasi(k.durasiMs)}
                   </span>
                   {k.puncakSuhu !== null && (
