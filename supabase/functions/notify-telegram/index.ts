@@ -141,7 +141,22 @@ Deno.serve(async (req) => {
       }
     );
 
-    const tgResult = await tgResponse.json();
+    let tgResult = await tgResponse.json();
+
+    // Markdown lawas Telegram menolak SELURUH pesan kalau ada penanda
+    // format yang tidak berpasangan. Nama alat diisi pengguna dan boleh
+    // memuat "_" atau "*", jadi satu nama seperti "Lemari_Utara" cukup
+    // untuk membungkam peringatan bahaya. Cacat format tidak boleh
+    // sampai menghalangi alarm, jadi dikirim ulang sebagai teks polos.
+    if (!tgResult.ok && /can't parse entities/i.test(String(tgResult.description ?? ""))) {
+      console.error(`Markdown ditolak (${tgResult.description}). Mengirim ulang sebagai teks polos.`);
+      const ulang = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: profile.telegram_chat_id, text: pesan }),
+      });
+      tgResult = await ulang.json();
+    }
 
     if (!tgResult.ok) {
       console.error("Gagal kirim Telegram:", tgResult);

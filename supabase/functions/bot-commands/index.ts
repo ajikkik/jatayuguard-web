@@ -134,13 +134,30 @@ async function kirimPesan(chatId: number, text: string): Promise<boolean> {
     });
 
     const hasil = await res.json();
-    if (!hasil.ok) {
-      console.error(
-        `Gagal kirim ke chat ${chatId}: ${hasil.description ?? "alasan tidak diketahui"}`
-      );
+    if (hasil.ok) return true;
+
+    const alasan = String(hasil.description ?? "alasan tidak diketahui");
+
+    // Markdown lawas Telegram menolak SELURUH pesan kalau ada penanda
+    // format yang tidak berpasangan. Itu mudah terjadi tanpa disengaja:
+    // nama alat diisi pengguna dan boleh mengandung "_" atau "*".
+    // Cacat format tidak boleh sampai membungkam peringatan, jadi kalau
+    // penyebabnya parsing, pesannya dikirim ulang sebagai teks polos.
+    if (/can't parse entities/i.test(alasan)) {
+      console.error(`Markdown ditolak untuk chat ${chatId} (${alasan}). Mengirim ulang sebagai teks polos.`);
+      const ulang = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+      const hasilUlang = await ulang.json();
+      if (hasilUlang.ok) return true;
+      console.error(`Kiriman teks polos juga gagal untuk chat ${chatId}: ${hasilUlang.description}`);
       return false;
     }
-    return true;
+
+    console.error(`Gagal kirim ke chat ${chatId}: ${alasan}`);
+    return false;
   } catch (err) {
     console.error(`Gagal menghubungi Telegram untuk chat ${chatId}:`, err);
     return false;
@@ -197,7 +214,9 @@ async function handleStart(chatId: number) {
     bagianId +
     `Command yang tersedia:\n` +
     `/status — ringkasan semua device\n` +
-    `/status <device_id> — detail 1 device\n` +
+    // Tanpa garis bawah: satu "_" yatim membuat Markdown lawas Telegram
+    // menolak SELURUH pesan, bukan cuma bagian itu.
+    `/status <id alat> — detail 1 device\n` +
     `/listdevice — daftar semua device terdaftar\n` +
     `/offline — device yang sedang offline\n\n` +
     `_Untuk mengubah threshold/konfigurasi, gunakan website._`;
