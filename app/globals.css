@@ -207,6 +207,14 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
+/* URL dan perintah tidak punya spasi untuk dipatahkan, sehingga di layar
+   sempit ia memaksa lebarnya sendiri dan menembus keluar kartu.
+   Dipakai `anywhere`, bukan `break-word`: hanya `anywhere` yang ikut
+   mengecilkan lebar minimum elemen, sehingga induknya tidak ikut melar. */
+code {
+  overflow-wrap: anywhere;
+}
+
 /* ============================================
    AUTOFILL CHROME
    Saat browser mengisi kolom secara otomatis, Chrome memaksa latar biru

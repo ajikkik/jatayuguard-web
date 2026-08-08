@@ -39,7 +39,9 @@ export default function KartuAlat({ device, reading, kondisi }: Props) {
         <span className="label-arsip !text-[10px]">{LABEL_KONDISI[kondisi]}</span>
       </div>
 
-      <h3 className="judul mb-0.5 text-lg text-[var(--tinta)] transition group-hover:text-[var(--soga)]">
+      {/* Nama alat diisi pengguna. Nama panjang tanpa spasi akan memaksa
+          lebarnya sendiri dan menembus kartu, sama seperti URL di profil. */}
+      <h3 className="judul mb-0.5 break-words text-lg text-[var(--tinta)] transition group-hover:text-[var(--soga)]">
         {device.nama || device.device_id}
       </h3>
 
