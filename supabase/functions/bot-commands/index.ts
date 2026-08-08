@@ -35,19 +35,66 @@ interface TelegramUpdate {
 type DeviceRow = {
   device_id: string;
   nama: string | null;
-  batas_suhu: number;
-  batas_kelembapan: number;
+  batas_suhu: number | null;
+  batas_kelembapan: number | null;
+  batas_uv: number | null;
   last_seen: string | null;
 };
 
 type ReadingRow = {
   device_id: string;
-  suhu: number;
-  kelembapan: number;
-  risk_index: number;
+  // Firmware mengirim null saat SHT3x tidak terdeteksi saat boot.
+  // UV tetap terkirim, dan sejak firmware v2 bisa jadi satu-satunya
+  // besaran yang memicu status.
+  suhu: number | null;
+  kelembapan: number | null;
+  nilai_uv: number | null;
+  risk_index: number | null;
   status: string;
   created_at: string;
 };
+
+// Bentuk minimal yang dibutuhkan helper di bawah. Sengaja tidak memakai
+// ReadingRow/DeviceRow utuh karena beberapa query hanya mengambil sebagian
+// kolom — menuntut bentuk penuh akan memaksa select yang tidak perlu.
+type NilaiUkur = {
+  suhu: number | null;
+  kelembapan: number | null;
+  nilai_uv: number | null;
+};
+type AmbangUkur = {
+  batas_suhu: number | null;
+  batas_kelembapan: number | null;
+  batas_uv: number | null;
+};
+
+/**
+ * Hanya besaran yang benar-benar terukur yang disebut. Mencetak
+ * "Suhu: null°C" lebih membingungkan daripada tidak menyebutnya.
+ */
+function barisUkur(reading: NilaiUkur, device: AmbangUkur): string[] {
+  const baris: string[] = [];
+  if (reading.suhu != null) {
+    baris.push(`Suhu: ${reading.suhu.toFixed(1)}°C (limit: ${device.batas_suhu ?? "-"}°C)`);
+  }
+  if (reading.kelembapan != null) {
+    baris.push(
+      `Kelembapan: ${reading.kelembapan.toFixed(1)}% (limit: ${device.batas_kelembapan ?? "-"}%)`
+    );
+  }
+  if (reading.nilai_uv != null) {
+    baris.push(`UV Index: ${reading.nilai_uv.toFixed(2)} (limit: ${device.batas_uv ?? "-"})`);
+  }
+  return baris;
+}
+
+/** Sensor yang mati adalah informasi, bukan sekadar ketiadaan nilai. */
+function sensorMati(reading: NilaiUkur): string[] {
+  const mati: string[] = [];
+  if (reading.suhu == null) mati.push("suhu");
+  if (reading.kelembapan == null) mati.push("kelembapan");
+  return mati;
+}
 
 function isOnline(lastSeen: string | null): boolean {
   if (!lastSeen) return false;
@@ -95,7 +142,7 @@ async function cariOwnerIdDariChatId(chatId: number): Promise<string | null> {
 async function ambilReadingTerbaru(): Promise<Record<string, ReadingRow>> {
   const { data } = await supabase
     .from("readings")
-    .select("device_id, suhu, kelembapan, risk_index, status, created_at")
+    .select("device_id, suhu, kelembapan, nilai_uv, risk_index, status, created_at")
     .order("created_at", { ascending: false })
     .limit(500); // cukup besar untuk skala 2-5 device, ambil yang terbaru per device
 
@@ -140,7 +187,7 @@ async function handleListDevice(chatId: number, ownerId: string) {
 async function handleStatusSemua(chatId: number, ownerId: string) {
   const { data: devices } = await supabase
     .from("devices")
-    .select("device_id, nama, batas_suhu, batas_kelembapan, last_seen")
+    .select("device_id, nama, batas_suhu, batas_kelembapan, batas_uv, last_seen")
     .eq("owner_id", ownerId)
     .order("device_id");
 
@@ -160,9 +207,10 @@ async function handleStatusSemua(chatId: number, ownerId: string) {
       return `${online ? "🟢" : "⚪"} *${namaTampil}* — belum ada data`;
     }
 
+    const ukur = barisUkur(r, d);
     return (
       `${emojiStatus(r.status)} *${namaTampil}* ${online ? "" : "(OFFLINE)"}\n` +
-      `   🌡️ ${r.suhu}°C  💧 ${r.kelembapan}%  Risk: ${r.risk_index}`
+      `   ${ukur.join("  ")}${ukur.length ? "  " : ""}Risk: ${r.risk_index ?? "-"}`
     );
   });
 
@@ -172,7 +220,7 @@ async function handleStatusSemua(chatId: number, ownerId: string) {
 async function handleStatusSatu(chatId: number, deviceId: string, ownerId: string) {
   const { data: device } = await supabase
     .from("devices")
-    .select("device_id, nama, batas_suhu, batas_kelembapan, last_seen")
+    .select("device_id, nama, batas_suhu, batas_kelembapan, batas_uv, last_seen")
     .eq("device_id", deviceId)
     .eq("owner_id", ownerId)
     .single();
@@ -201,14 +249,17 @@ async function handleStatusSatu(chatId: number, deviceId: string, ownerId: strin
     return;
   }
 
+  const mati = sensorMati(reading);
   const pesan =
     `${emojiStatus(reading.status)} *${namaTampil}*\n\n` +
-    `🌡️ Suhu: ${reading.suhu}°C (limit: ${device.batas_suhu}°C)\n` +
-    `💧 Kelembapan: ${reading.kelembapan}% (limit: ${device.batas_kelembapan}%)\n` +
-    `🔢 Risk Index: ${reading.risk_index}\n` +
+    barisUkur(reading, device).join("\n") +
+    `\n🔢 Risk Index: ${reading.risk_index ?? "-"}\n` +
     `🛡️ Status: *${reading.status}*\n` +
     `📡 Koneksi: ${online ? "Online ✅" : "Offline ⚠️"}\n` +
-    `🕐 Update terakhir: ${formatWaktu(reading.created_at)}`;
+    `🕐 Update terakhir: ${formatWaktu(reading.created_at)}` +
+    (mati.length
+      ? `\n\n⚠️ Sensor ${mati.join(" dan ")} tidak mengirim nilai. Periksa wiring alat.`
+      : "");
 
   await kirimPesan(chatId, pesan);
 }

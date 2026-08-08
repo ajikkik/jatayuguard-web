@@ -24,8 +24,8 @@ interface ReadingPayload {
     device_id: string;
     suhu: number | null;
     kelembapan: number | null;
-    nilai_uv: number;
-    risk_index: number;
+    nilai_uv: number | null;
+    risk_index: number | null;
     status: string;
     created_at: string;
   };
@@ -45,9 +45,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "payload tidak valid" }), { status: 200 });
     }
 
-    if (reading.suhu == null || reading.kelembapan == null) {
-      console.log(`Dilewati: device ${reading.device_id} kirim suhu/kelembapan null (kemungkinan sensor gagal baca).`);
-      return new Response(JSON.stringify({ skipped: "suhu/kelembapan null" }), { status: 200 });
+    // CATATAN: dulu di sini ada penjaga yang MELEWATI pembacaan bila
+    // suhu/kelembapan null. Itu ditulis waktu keduanya satu-satunya ukuran.
+    // Sejak firmware v2, UV sendirian bisa memicu WASPADA/BAHAYA, sehingga
+    // alat yang sensor SHT3x-nya mati tapi UV-nya melewati ambang TIDAK
+    // PERNAH mengirim notifikasi sama sekali. Alat berteriak, alert dibuang.
+    //
+    // Sekarang yang dilewati hanya pembacaan tanpa satu pun nilai ukur.
+    if (reading.suhu == null && reading.kelembapan == null && reading.nilai_uv == null) {
+      console.log(`Dilewati: device ${reading.device_id} tidak mengirim satu pun nilai ukur.`);
+      return new Response(JSON.stringify({ skipped: "tidak ada nilai ukur" }), { status: 200 });
     }
 
     // Hanya proses jika statusnya WASPADA atau BAHAYA. AMAN tidak perlu notif.
@@ -58,7 +65,7 @@ Deno.serve(async (req) => {
     // Cari device ini: siapa pemiliknya, nama tampilannya, dan threshold-nya
     const { data: device, error: deviceError } = await supabase
       .from("devices")
-      .select("nama, owner_id, batas_suhu, batas_kelembapan")
+      .select("nama, owner_id, batas_suhu, batas_kelembapan, batas_uv")
       .eq("device_id", reading.device_id)
       .single();
 
@@ -92,13 +99,34 @@ Deno.serve(async (req) => {
       ? "🚨 *KONDISI KRITIS*"
       : "⚠️ *PERINGATAN WASPADA*";
 
+    // Hanya besaran yang benar-benar terukur yang disebut. Menulis
+    // "Suhu: null" lebih membingungkan daripada tidak menyebutnya.
+    const barisUkur: string[] = [];
+    if (reading.suhu != null) {
+      barisUkur.push(`🌡️ Suhu: ${reading.suhu.toFixed(1)}°C (Limit: ${device.batas_suhu ?? "-"}°C)`);
+    }
+    if (reading.kelembapan != null) {
+      barisUkur.push(`💧 Kelembapan: ${reading.kelembapan.toFixed(1)}% (Limit: ${device.batas_kelembapan ?? "-"}%)`);
+    }
+    if (reading.nilai_uv != null) {
+      barisUkur.push(`☀️ UV Index: ${reading.nilai_uv.toFixed(2)} (Limit: ${device.batas_uv ?? "-"})`);
+    }
+
+    // Sensor yang mati adalah informasi penting, bukan sekadar ketiadaan:
+    // penerima perlu tahu bahwa sebagian pemantauan sedang buta.
+    const sensorMati: string[] = [];
+    if (reading.suhu == null) sensorMati.push("suhu");
+    if (reading.kelembapan == null) sensorMati.push("kelembapan");
+
     const pesan =
       `${header}\n\n` +
       `📍 *Device:* ${namaDevice}\n` +
-      `🌡️ Suhu: ${reading.suhu.toFixed(1)}°C (Limit: ${device.batas_suhu}°C)\n` +
-      `💧 Kelembapan: ${reading.kelembapan.toFixed(1)}% (Limit: ${device.batas_kelembapan}%)\n` +
-      `🔢 Risk Index: ${reading.risk_index}\n` +
-      `🛡️ Status: *${reading.status}*`;
+      barisUkur.join("\n") +
+      `\n🔢 Risk Index: ${reading.risk_index ?? "-"}\n` +
+      `🛡️ Status: *${reading.status}*` +
+      (sensorMati.length
+        ? `\n\n⚠️ Sensor ${sensorMati.join(" dan ")} tidak mengirim nilai. Periksa wiring alat.`
+        : "");
 
     const tgResponse = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
