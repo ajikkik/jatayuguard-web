@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatAngka, waktuLengkap, waktuRelatif } from "@/lib/format";
-import { LABEL_KONDISI, SEGEL_KONDISI, type KondisiAlat } from "@/lib/status";
+import { LABEL_KONDISI, lewatBatas, SEGEL_KONDISI, type KondisiAlat } from "@/lib/status";
 import type { Device, Reading } from "@/lib/types";
 
 type Props = {
@@ -12,12 +12,14 @@ type Props = {
 export default function KartuAlat({ device, reading, kondisi }: Props) {
   const diam = kondisi === "DIAM" || kondisi === "KOSONG";
 
-  const suhuLewat =
-    reading?.suhu != null && device.batas_suhu != null && reading.suhu > device.batas_suhu;
-  const humLewat =
-    reading?.kelembapan != null &&
-    device.batas_kelembapan != null &&
-    reading.kelembapan > device.batas_kelembapan;
+  const suhuLewat = lewatBatas(reading?.suhu, device.batas_suhu);
+  const humLewat = lewatBatas(reading?.kelembapan, device.batas_kelembapan);
+  const uvLewat = lewatBatas(reading?.nilai_uv, device.batas_uv);
+
+  // UV baru ada sejak firmware v2. Alat yang masih firmware lama tidak
+  // mengirimnya sama sekali, jadi kolomnya disembunyikan alih-alih
+  // memajang sel kosong permanen.
+  const adaUV = reading?.nilai_uv != null;
 
   // Warna bata dipakai untuk keadaan yang berlaku SEKARANG. Pembacaan dari
   // alat yang sudah diam berminggu-minggu tetap ditampilkan sebagai fakta,
@@ -52,7 +54,9 @@ export default function KartuAlat({ device, reading, kondisi }: Props) {
 
       {reading ? (
         <div
-          className="mt-auto grid grid-cols-2 gap-px border border-[var(--line)] bg-[var(--line)] text-sm"
+          className={`mt-auto grid gap-px border border-[var(--line)] bg-[var(--line)] text-sm ${
+            adaUV ? "grid-cols-3" : "grid-cols-2"
+          }`}
           style={{ fontVariantNumeric: "tabular-nums" }}
         >
           <div className="bg-[var(--permukaan)] px-3 py-2">
@@ -60,19 +64,35 @@ export default function KartuAlat({ device, reading, kondisi }: Props) {
             <p className={`font-medium ${warnaNilai(suhuLewat)}`}>{formatAngka(reading.suhu)}°C</p>
             {device.batas_suhu != null && (
               <p className={`mt-0.5 text-[11px] ${warnaNilai(suhuLewat)} opacity-90`}>
-                {suhuLewat ? "lewat batas" : "batas"} {formatAngka(device.batas_suhu)}°C
+                {suhuLewat ? "lewat" : "batas"} {formatAngka(device.batas_suhu)}
               </p>
             )}
           </div>
+
           <div className="bg-[var(--permukaan)] px-3 py-2">
-            <p className="label-arsip mb-0.5 !text-[10px]">Kelembapan</p>
+            <p className="label-arsip mb-0.5 !text-[10px]">Lembap</p>
             <p className={`font-medium ${warnaNilai(humLewat)}`}>{formatAngka(reading.kelembapan)}%</p>
             {device.batas_kelembapan != null && (
               <p className={`mt-0.5 text-[11px] ${warnaNilai(humLewat)} opacity-90`}>
-                {humLewat ? "lewat batas" : "batas"} {formatAngka(device.batas_kelembapan)}%
+                {humLewat ? "lewat" : "batas"} {formatAngka(device.batas_kelembapan)}
               </p>
             )}
           </div>
+
+          {adaUV && (
+            <div className="bg-[var(--permukaan)] px-3 py-2">
+              <p className="label-arsip mb-0.5 !text-[10px]">UV</p>
+              {/* Dua desimal: ambangnya 1,0-2,0 dan lantai deteksi sensor
+                  sekitar 0,05, jadi satu desimal menyembunyikan perbedaan
+                  yang justru menentukan. */}
+              <p className={`font-medium ${warnaNilai(uvLewat)}`}>{formatAngka(reading.nilai_uv, 2)}</p>
+              {device.batas_uv != null && (
+                <p className={`mt-0.5 text-[11px] ${warnaNilai(uvLewat)} opacity-90`}>
+                  {uvLewat ? "lewat" : "batas"} {formatAngka(device.batas_uv, 1)}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <p className="mt-auto text-sm text-[var(--tinta-soft)]">Menunggu data pertama…</p>

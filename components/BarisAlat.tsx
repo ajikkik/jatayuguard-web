@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatAngka, waktuLengkap, waktuRelatif } from "@/lib/format";
-import { LABEL_KONDISI, SEGEL_KONDISI, type KondisiAlat } from "@/lib/status";
+import { LABEL_KONDISI, lewatBatas, SEGEL_KONDISI, type KondisiAlat } from "@/lib/status";
 import type { Device, Reading } from "@/lib/types";
 
 type Props = {
@@ -10,28 +10,76 @@ type Props = {
 };
 
 /**
+ * Warna bata dipakai untuk keadaan yang berlaku SEKARANG. Pembacaan dari
+ * alat yang sudah diam berminggu-minggu tetap ditampilkan sebagai fakta,
+ * tapi diredam supaya tidak terbaca sebagai keadaan darurat yang aktif.
+ */
+function warnaNilai(diam: boolean, lewat: boolean) {
+  if (diam) return "text-[var(--tinta-soft)]";
+  return lewat ? "text-[var(--bata)]" : "text-[var(--tinta)]";
+}
+
+/**
+ * Satu sel ukur: nilai + ambangnya, atau tanda "tidak ada".
+ *
+ * Dideklarasikan di LUAR BarisAlat. Komponen yang dibuat di dalam render
+ * adalah komponen baru setiap render, sehingga React me-remount-nya dan
+ * mereset state-nya alih-alih memperbaruinya.
+ */
+function Sel({
+  label,
+  nilai,
+  satuan,
+  batas,
+  lewat,
+  diam,
+  desimal = 1,
+}: {
+  label: string;
+  nilai: number | null | undefined;
+  satuan: string;
+  batas: number | null;
+  lewat: boolean;
+  diam: boolean;
+  desimal?: number;
+}) {
+  return (
+    <div className="text-sm">
+      <span className="label-arsip mr-2 !text-[10px] sm:hidden">{label}</span>
+      {nilai != null ? (
+        <>
+          <span className={warnaNilai(diam, lewat)}>
+            {formatAngka(nilai, desimal)}
+            {satuan}
+          </span>
+          {batas != null && (
+            <span className="ml-2 text-[11px] text-[var(--tinta-soft)]">
+              / {formatAngka(batas, desimal)}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-[var(--tinta-soft)]">—</span>
+      )}
+    </div>
+  );
+}
+
+/**
  * Satu alat sebagai baris padat (~64px) alih-alih kartu (~200px).
  * Dipakai saat alat sudah banyak, ketika membandingkan antar-alat lebih
  * penting daripada memberi tiap alat ruangnya sendiri.
  */
 export default function BarisAlat({ device, reading, kondisi }: Props) {
   const diam = kondisi === "DIAM" || kondisi === "KOSONG";
-  const suhuLewat =
-    reading?.suhu != null && device.batas_suhu != null && reading.suhu > device.batas_suhu;
-  const humLewat =
-    reading?.kelembapan != null &&
-    device.batas_kelembapan != null &&
-    reading.kelembapan > device.batas_kelembapan;
-
-  function warnaNilai(lewat: boolean) {
-    if (diam) return "text-[var(--tinta-soft)]";
-    return lewat ? "text-[var(--bata)]" : "text-[var(--tinta)]";
-  }
+  const suhuLewat = lewatBatas(reading?.suhu, device.batas_suhu);
+  const humLewat = lewatBatas(reading?.kelembapan, device.batas_kelembapan);
+  const uvLewat = lewatBatas(reading?.nilai_uv, device.batas_uv);
 
   return (
     <Link
       href={`/device/${device.device_id}`}
-      className="group grid grid-cols-1 items-center gap-x-4 gap-y-1 px-4 py-3 transition hover:bg-[var(--kain-dim)] sm:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(0,1fr))]"
+      className="group grid grid-cols-1 items-center gap-x-4 gap-y-1 px-4 py-3 transition hover:bg-[var(--kain-dim)] sm:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]"
       style={{ fontVariantNumeric: "tabular-nums" }}
     >
       <div className="flex min-w-0 items-center gap-2.5">
@@ -44,37 +92,24 @@ export default function BarisAlat({ device, reading, kondisi }: Props) {
         </div>
       </div>
 
-      <div className="text-sm">
-        <span className="label-arsip mr-2 !text-[10px] sm:hidden">Suhu</span>
-        {reading ? (
-          <>
-            <span className={warnaNilai(suhuLewat)}>{formatAngka(reading.suhu)}°C</span>
-            {device.batas_suhu != null && (
-              <span className="ml-2 text-[11px] text-[var(--tinta-soft)]">
-                / {formatAngka(device.batas_suhu)}
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-[var(--tinta-soft)]">—</span>
-        )}
-      </div>
-
-      <div className="text-sm">
-        <span className="label-arsip mr-2 !text-[10px] sm:hidden">Kelembapan</span>
-        {reading ? (
-          <>
-            <span className={warnaNilai(humLewat)}>{formatAngka(reading.kelembapan)}%</span>
-            {device.batas_kelembapan != null && (
-              <span className="ml-2 text-[11px] text-[var(--tinta-soft)]">
-                / {formatAngka(device.batas_kelembapan)}
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-[var(--tinta-soft)]">—</span>
-        )}
-      </div>
+      <Sel label="Suhu" nilai={reading?.suhu} satuan="°C" batas={device.batas_suhu} lewat={suhuLewat} diam={diam} />
+      <Sel
+        label="Kelembapan"
+        nilai={reading?.kelembapan}
+        satuan="%"
+        batas={device.batas_kelembapan}
+        lewat={humLewat}
+        diam={diam}
+      />
+      <Sel
+        label="UV Index"
+        nilai={reading?.nilai_uv}
+        satuan=""
+        batas={device.batas_uv}
+        lewat={uvLewat}
+        diam={diam}
+        desimal={2}
+      />
 
       <div
         className="text-[11px] text-[var(--tinta-soft)]"

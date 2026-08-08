@@ -56,6 +56,15 @@ export const SEGEL_KONDISI: Record<KondisiAlat, string> = {
   AMAN: "segel-aman",
 };
 
+/**
+ * Sebuah nilai dianggap melewati ambang hanya kalau KEDUANYA ada.
+ * Memakai truthiness di sini salah: batas 0 adalah batas yang sah,
+ * dan nilai null bukan berarti aman — berarti tidak diketahui.
+ */
+export function lewatBatas(nilai: number | null | undefined, batas: number | null | undefined) {
+  return nilai != null && batas != null && nilai > batas;
+}
+
 /** Kondisi yang menuntut perhatian sekarang, dipakai untuk strip peringatan. */
 export function perluPerhatian(k: KondisiAlat) {
   return k === "BAHAYA" || k === "DIAM" || k === "KOSONG";

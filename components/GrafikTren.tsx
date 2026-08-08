@@ -16,6 +16,14 @@ type Props = {
   formatWaktu: (t: number) => string;
   formatWaktuPanjang: (t: number) => string;
   memuat?: boolean;
+  /** Angka di belakang koma untuk nilai. UV Index butuh 2, suhu cukup 1. */
+  desimal?: number;
+  /**
+   * Batas bawah sumbu. Besaran fisik yang tidak bisa negatif (kelembapan,
+   * UV Index) harus dikunci di 0 — tanpa ini ruang napas domain menarik
+   * sumbunya ke angka minus yang mustahil.
+   */
+  minimum?: number;
 };
 
 const TINGGI = 210;
@@ -48,6 +56,8 @@ export default function GrafikTren({
   formatWaktu,
   formatWaktuPanjang,
   memuat = false,
+  desimal = 1,
+  minimum,
 }: Props) {
   const wadahRef = useRef<HTMLDivElement>(null);
   const [lebar, setLebar] = useState(0);
@@ -84,9 +94,13 @@ export default function GrafikTren({
       hi += 1;
     }
     const napas = (hi - lo) * 0.12;
-    const tick = hitungTick(lo - napas, hi + napas);
-    const domLo = Math.min(tick[0], lo - napas);
-    const domHi = Math.max(tick[tick.length - 1], hi + napas);
+    let bawah = lo - napas;
+    if (minimum !== undefined) bawah = Math.max(bawah, minimum);
+    const tick = hitungTick(bawah, hi + napas).filter(
+      (t) => minimum === undefined || t >= minimum
+    );
+    const domLo = Math.min(tick[0] ?? bawah, bawah);
+    const domHi = Math.max(tick[tick.length - 1] ?? hi, hi + napas);
 
     const xAt = (i: number) =>
       data.length === 1 ? PAD.kiri + plotW / 2 : PAD.kiri + (i / (data.length - 1)) * plotW;
@@ -100,7 +114,7 @@ export default function GrafikTren({
         : "";
 
     return { plotW, plotH, tick, domLo, domHi, xAt, yAt, garis, isian, dasar };
-  }, [lebar, data, batas]);
+  }, [lebar, data, batas, minimum]);
 
   const terakhir = data[data.length - 1];
   const titikAktif = aktif != null ? data[aktif] : null;
@@ -139,20 +153,20 @@ export default function GrafikTren({
     data.length === 0
       ? `Grafik ${judul}: belum ada data.`
       : `Grafik ${judul} dari ${data.length} pembacaan. Terendah ${formatAngka(
-          Math.min(...data.map((d) => d.nilai))
-        )}${satuan}, tertinggi ${formatAngka(Math.max(...data.map((d) => d.nilai)))}${satuan}, terakhir ${formatAngka(
-          terakhir?.nilai ?? 0
-        )}${satuan}.${batas != null ? ` Ambang batas ${formatAngka(batas)}${satuan}.` : ""}`;
+          Math.min(...data.map((d) => d.nilai)), desimal
+        )}${satuan}, tertinggi ${formatAngka(Math.max(...data.map((d) => d.nilai)), desimal)}${satuan}, terakhir ${formatAngka(
+          terakhir?.nilai ?? 0, desimal
+        )}${satuan}.${batas != null ? ` Ambang batas ${formatAngka(batas, desimal)}${satuan}.` : ""}`;
 
   return (
     <div>
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h3 className="label-arsip">
-          {judul} ({satuan})
+          {satuan ? `${judul} (${satuan})` : judul}
         </h3>
         {batas != null && (
           <span className="text-[11px] text-[var(--tinta-soft)]">
-            batas {formatAngka(batas)}
+            batas {formatAngka(batas, desimal)}
             {satuan}
           </span>
         )}
@@ -257,7 +271,7 @@ export default function GrafikTren({
                     fill="var(--tinta)"
                     style={{ fontVariantNumeric: "tabular-nums" }}
                   >
-                    {formatAngka(terakhir.nilai)}
+                    {formatAngka(terakhir.nilai, desimal)}
                     {satuan}
                   </text>
                 </>
@@ -319,7 +333,7 @@ export default function GrafikTren({
               className="font-semibold text-[var(--tinta)]"
               style={{ fontVariantNumeric: "tabular-nums" }}
             >
-              {formatAngka(titikAktif.nilai)}
+              {formatAngka(titikAktif.nilai, desimal)}
               {satuan}
             </span>
             <span className="ml-2 text-[var(--tinta-soft)]">{formatWaktuPanjang(titikAktif.waktu)}</span>
@@ -330,7 +344,7 @@ export default function GrafikTren({
       {/* Pembacaan aktif diumumkan ke screen reader, sama isinya dengan tooltip */}
       <p aria-live="polite" className="sr-only">
         {titikAktif
-          ? `${judul} ${formatAngka(titikAktif.nilai)}${satuan} pada ${formatWaktuPanjang(titikAktif.waktu)}`
+          ? `${judul} ${formatAngka(titikAktif.nilai, desimal)}${satuan} pada ${formatWaktuPanjang(titikAktif.waktu)}`
           : ""}
       </p>
     </div>

@@ -24,6 +24,7 @@ const KOLOM = [
   "status",
   "batas_suhu_c",
   "batas_kelembapan_persen",
+  "batas_uv",
 ];
 
 /** "2026-08-07" -> awal/akhir hari. String ISO penuh diteruskan apa adanya. */
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
   // sendirian, tanpa harus membuka aplikasi untuk tahu batasnya berapa.
   const { data: devices, error: errDevices } = await supabase
     .from("devices")
-    .select("device_id, nama, batas_suhu, batas_kelembapan");
+    .select("device_id, nama, batas_suhu, batas_kelembapan, batas_uv");
 
   if (errDevices) return galat("Gagal memuat daftar alat.", 502);
 
@@ -153,11 +154,12 @@ export async function GET(request: NextRequest) {
           alat?.nama ?? "",
           angka(r.suhu, 1),
           angka(r.kelembapan, 1),
-          angka(r.nilai_uv),
+          angka(r.nilai_uv, 2),
           angka(r.risk_index),
           r.status,
           angka(alat?.batas_suhu, 1),
           angka(alat?.batas_kelembapan, 1),
+          angka(alat?.batas_uv, 1),
         ])
       );
     }

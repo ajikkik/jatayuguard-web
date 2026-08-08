@@ -43,7 +43,7 @@ export default function DashboardPage() {
   const muatData = useCallback(async () => {
     const { data: devicesData, error: devicesError } = await supabase
       .from("devices")
-      .select("id, device_id, nama, batas_suhu, batas_kelembapan, last_seen")
+      .select("id, device_id, nama, batas_suhu, batas_kelembapan, batas_uv, last_seen")
       .order("nama");
 
     if (devicesError) {
@@ -62,7 +62,7 @@ export default function DashboardPage() {
       daftarAlat.map((device) =>
         supabase
           .from("readings")
-          .select("device_id, suhu, kelembapan, risk_index, status, created_at")
+          .select("device_id, suhu, kelembapan, nilai_uv, risk_index, status, created_at")
           .eq("device_id", device.device_id)
           .order("created_at", { ascending: false })
           .limit(1)

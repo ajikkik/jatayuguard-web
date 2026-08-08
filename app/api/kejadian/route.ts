@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
   for (let awal = 0; awal < (count ?? 0); awal += UKURAN_HALAMAN) {
     const { data, error } = await supabase
       .from("readings")
-      .select("created_at, status, suhu, kelembapan")
+      .select("created_at, status, suhu, kelembapan, nilai_uv")
       .eq("device_id", deviceId)
       .gte("created_at", dari.toISOString())
       .lte("created_at", sampai.toISOString())

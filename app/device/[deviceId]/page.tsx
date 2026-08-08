@@ -11,18 +11,21 @@ import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
 
-// Tipe di halaman ini punya kolom tambahan (id, nilai_uv) yang tidak
-// dipakai dashboard, jadi tetap terpisah dari lib/types.ts.
+// Tipe di halaman ini punya kolom tambahan (id) yang tidak dipakai
+// dashboard, jadi tetap terpisah dari lib/types.ts.
 //
-// suhu/kelembapan nullable karena DUA sebab berbeda: sensor gagal baca,
-// dan alat yang memang tidak mengukurnya (ALAT_3 hanya mengukur UV).
-// Keduanya harus tampil sebagai "tidak ada nilai", bukan nol.
+// suhu/kelembapan nullable karena firmware mengirim null saat SHT3x tidak
+// terdeteksi saat boot. Selama sensornya hidup, firmware justru menahan
+// nilai terakhir saat satu pembacaan gagal, supaya glitch I2C tidak
+// memicu alarm palsu — jadi null berarti sensornya memang bermasalah,
+// bukan sekadar satu bacaan meleset.
 type Device = {
   id: string;
   device_id: string;
   nama: string;
   batas_suhu: number | null;
   batas_kelembapan: number | null;
+  batas_uv: number | null;
   last_seen: string | null;
 };
 
@@ -61,6 +64,7 @@ const KOLOM = [
   { kunci: "created_at", label: "Waktu" },
   { kunci: "suhu", label: "Suhu" },
   { kunci: "kelembapan", label: "Kelembapan" },
+  { kunci: "nilai_uv", label: "UV" },
   { kunci: "risk_index", label: "Risiko" },
   { kunci: "status", label: "Status" },
 ] as const;
@@ -107,11 +111,12 @@ export default function DeviceDetailPage() {
   const [namaInput, setNamaInput] = useState("");
   const [batasSuhuInput, setBatasSuhuInput] = useState("");
   const [batasHumInput, setBatasHumInput] = useState("");
+  const [batasUvInput, setBatasUvInput] = useState("");
 
   const muatDevice = useCallback(async () => {
     const { data, error } = await supabase
       .from("devices")
-      .select("id, device_id, nama, batas_suhu, batas_kelembapan, last_seen")
+      .select("id, device_id, nama, batas_suhu, batas_kelembapan, batas_uv, last_seen")
       .eq("device_id", params.deviceId)
       .maybeSingle();
 
@@ -130,6 +135,7 @@ export default function DeviceDetailPage() {
       // ini String(null) mengisi kolom dengan teks "null".
       setBatasSuhuInput(data.batas_suhu?.toString() ?? "");
       setBatasHumInput(data.batas_kelembapan?.toString() ?? "");
+      setBatasUvInput(data.batas_uv?.toString() ?? "");
     }
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,6 +229,12 @@ export default function DeviceDetailPage() {
     if (!Number.isFinite(hum)) return "Batas kelembapan harus berupa angka.";
     if (hum < 0 || hum > 100) return "Batas kelembapan harus antara 0 dan 100 %.";
 
+    // Skala UV Index WHO/WMO adalah 0-11; di luar itu bukan angka yang
+    // bisa dihasilkan sensor GUVA-S12SD.
+    const uv = parseFloat(batasUvInput);
+    if (!Number.isFinite(uv)) return "Batas UV harus berupa angka.";
+    if (uv < 0 || uv > 11) return "Batas UV harus antara 0 dan 11 (skala UV Index).";
+
     return null;
   }
 
@@ -247,6 +259,7 @@ export default function DeviceDetailPage() {
         nama: namaInput,
         batas_suhu: parseFloat(batasSuhuInput),
         batas_kelembapan: parseFloat(batasHumInput),
+        batas_uv: parseFloat(batasUvInput),
       })
       .eq("device_id", device.device_id);
 
@@ -356,6 +369,7 @@ export default function DeviceDetailPage() {
 
   const titikSuhu = titikDari((r) => r.suhu);
   const titikHum = titikDari((r) => r.kelembapan);
+  const titikUv = titikDari((r) => r.nilai_uv);
   const pembacaanGagal = menaik.filter((r) => r.suhu == null || r.kelembapan == null).length;
   const diringkas = titikSuhu.length < menaik.length;
 
@@ -391,7 +405,7 @@ export default function DeviceDetailPage() {
         {/* Form konfigurasi */}
         <form onSubmit={handleSimpan} className="kartu-kain mb-8 px-7 py-7">
           <h2 className="label-arsip mb-5">Konfigurasi</h2>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label htmlFor="nama-tampilan" className="label-arsip mb-2 block !text-[10px]">
                 Nama tampilan
@@ -429,7 +443,30 @@ export default function DeviceDetailPage() {
                 className="w-full border border-[var(--line)] bg-[var(--input-bg)] h-11 px-3 text-sm outline-none focus:border-[var(--soga)]"
               />
             </div>
+            <div>
+              <label htmlFor="batas-uv" className="label-arsip mb-2 block !text-[10px]">
+                Batas UV Index
+              </label>
+              <input
+                id="batas-uv"
+                type="number"
+                step="0.1"
+                min="0"
+                max="11"
+                value={batasUvInput}
+                onChange={(e) => setBatasUvInput(e.target.value)}
+                aria-describedby="petunjuk-uv"
+                className="w-full border border-[var(--line)] bg-[var(--input-bg)] h-11 px-3 text-sm outline-none focus:border-[var(--soga)]"
+              />
+            </div>
           </div>
+          {/* Angka ini tidak jelas sendirian: skala UV Index 0-11 asing bagi
+              kebanyakan orang, dan yang penting justru rentang bawahnya. */}
+          <p id="petunjuk-uv" className="mt-3 text-xs text-[var(--tinta-soft)]">
+            Ruang penyimpanan tertutup yang sehat membaca mendekati 0. Bacaan yang
+            bertahan di atas 1,0 menandakan ada sumber UV nyata — celah sinar
+            matahari, atau lampu neon tanpa filter.
+          </p>
           <p className="mt-4 text-xs text-[var(--tinta-soft)]">
             Perubahan diterapkan saat alat menyala ulang atau menyambung WiFi kembali.
           </p>
@@ -509,8 +546,23 @@ export default function DeviceDetailPage() {
               judul="Kelembapan"
               satuan="%"
               data={titikHum}
+              minimum={0}
               batas={device.batas_kelembapan ?? null}
               warna="var(--indigo)"
+              formatWaktu={formatSumbu}
+              formatWaktuPanjang={(t) => waktuLengkap(new Date(t).toISOString())}
+              memuat={memuatRentang}
+            />
+            {/* UV pakai kunyit: warna ketiga yang sudah tervalidasi kontrasnya
+                di kedua tema, dan secara makna cocok untuk cahaya. */}
+            <GrafikTren
+              judul="UV Index"
+              satuan=""
+              data={titikUv}
+              desimal={2}
+              minimum={0}
+              batas={device.batas_uv ?? null}
+              warna="var(--kunyit)"
               formatWaktu={formatSumbu}
               formatWaktuPanjang={(t) => waktuLengkap(new Date(t).toISOString())}
               memuat={memuatRentang}
@@ -567,7 +619,26 @@ export default function DeviceDetailPage() {
                   </span>
                   {k.jumlahPembacaan > 0 && (
                     <span className="w-full pl-6 text-xs text-[var(--tinta-soft)]">
-                      puncak {formatAngka(k.puncakSuhu)}°C · {formatAngka(k.puncakKelembapan)}% ·{" "}
+                      {/* Hanya besaran yang benar-benar terukur yang disebut.
+                          Menulis "puncak —°C" untuk alat yang sensor suhunya
+                          mati hanya menambah derau. */}
+                      {[
+                        k.puncakSuhu != null ? `${formatAngka(k.puncakSuhu)}°C` : null,
+                        k.puncakKelembapan != null ? `${formatAngka(k.puncakKelembapan)}%` : null,
+                        k.puncakUv != null ? `UV ${formatAngka(k.puncakUv, 2)}` : null,
+                      ].filter(Boolean).length > 0 && (
+                        <>
+                          puncak{" "}
+                          {[
+                            k.puncakSuhu != null ? `${formatAngka(k.puncakSuhu)}°C` : null,
+                            k.puncakKelembapan != null ? `${formatAngka(k.puncakKelembapan)}%` : null,
+                            k.puncakUv != null ? `UV ${formatAngka(k.puncakUv, 2)}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}{" "}
+                          ·{" "}
+                        </>
+                      )}
                       {k.jumlahPembacaan} pembacaan
                     </span>
                   )}
@@ -625,6 +696,7 @@ export default function DeviceDetailPage() {
                       <td className="py-2.5 pr-4 text-[var(--tinta-soft)]">{waktuLengkap(r.created_at)}</td>
                       <td className="py-2.5 pr-4 text-[var(--tinta)]">{formatAngka(r.suhu)}°C</td>
                       <td className="py-2.5 pr-4 text-[var(--tinta)]">{formatAngka(r.kelembapan)}%</td>
+                      <td className="py-2.5 pr-4 text-[var(--tinta)]">{formatAngka(r.nilai_uv, 2)}</td>
                       <td className="py-2.5 pr-4 text-[var(--tinta)]">{formatAngka(r.risk_index, 0)}</td>
                       <td className="py-2.5">
                         <span className="inline-flex items-center gap-2">

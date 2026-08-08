@@ -16,6 +16,8 @@ export type PembacaanRingkas = {
   // Sensor yang gagal baca menyimpan null.
   suhu: number | null;
   kelembapan: number | null;
+  /** UV Index. Sejak firmware v2 ini bisa jadi satu-satunya pemicu status. */
+  nilai_uv: number | null;
 };
 
 /**
@@ -36,6 +38,7 @@ export type Kejadian = {
   durasiMs: number;
   puncakSuhu: number | null;
   puncakKelembapan: number | null;
+  puncakUv: number | null;
   jumlahPembacaan: number;
 };
 
@@ -90,6 +93,7 @@ export function turunkanKejadian(
     akhir: string;
     puncakSuhu: number | null;
     puncakKelembapan: number | null;
+    puncakUv: number | null;
     jumlah: number;
   } | null = null;
 
@@ -103,6 +107,7 @@ export function turunkanKejadian(
       durasiMs: new Date(akhir).getTime() - new Date(berjalan.mulai).getTime(),
       puncakSuhu: berjalan.puncakSuhu,
       puncakKelembapan: berjalan.puncakKelembapan,
+      puncakUv: berjalan.puncakUv,
       jumlahPembacaan: berjalan.jumlah,
     });
     berjalan = null;
@@ -127,6 +132,7 @@ export function turunkanKejadian(
           durasiMs: jeda,
           puncakSuhu: null,
           puncakKelembapan: null,
+          puncakUv: null,
           jumlahPembacaan: 0,
         });
       }
@@ -144,6 +150,7 @@ export function turunkanKejadian(
       berjalan.akhir = p.created_at;
       berjalan.puncakSuhu = puncakBaru(berjalan.puncakSuhu, p.suhu);
       berjalan.puncakKelembapan = puncakBaru(berjalan.puncakKelembapan, p.kelembapan);
+      berjalan.puncakUv = puncakBaru(berjalan.puncakUv, p.nilai_uv);
       berjalan.jumlah += 1;
     } else {
       tutup(p.created_at);
@@ -153,6 +160,7 @@ export function turunkanKejadian(
         akhir: p.created_at,
         puncakSuhu: p.suhu,
         puncakKelembapan: p.kelembapan,
+        puncakUv: p.nilai_uv,
         jumlah: 1,
       };
     }
@@ -175,6 +183,7 @@ export function turunkanKejadian(
       durasiMs: jedaPenutup,
       puncakSuhu: null,
       puncakKelembapan: null,
+      puncakUv: null,
       jumlahPembacaan: 0,
     });
   } else {
