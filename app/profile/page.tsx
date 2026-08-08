@@ -199,13 +199,13 @@ export default function ProfilePage() {
 
         <form onSubmit={handleSimpan} className="kartu-kain px-7 py-7">
           <h2 className="label-arsip mb-2">Notifikasi Telegram</h2>
+          {/* Instruksi lama menyuruh membuka api.telegram.org/bot<TOKEN>/getUpdates
+              sendiri — menuntut pengguna tahu token bot, lalu mencari angka di
+              tengah JSON, sering dari ponsel. Sekarang botnya yang memberitahu. */}
           <p className="mb-5 text-sm text-[var(--tinta-soft)]">
-            Chat bot kamu, kirim <code className="bg-[var(--kain-dim)] px-1.5 py-0.5">/start</code>,
-            lalu buka{" "}
-            <code className="bg-[var(--kain-dim)] px-1.5 py-0.5">
-              api.telegram.org/bot&lt;TOKEN&gt;/getUpdates
-            </code>{" "}
-            untuk melihat chat ID kamu.
+            Kirim <code className="bg-[var(--kain-dim)] px-1.5 py-0.5">/start</code> ke bot
+            Telegram JatayuGuard. Bot akan membalas dengan chat ID kamu — ketuk angkanya
+            untuk menyalin, lalu tempel di bawah ini.
           </p>
 
           {/* Input ini sebelumnya tidak punya label sama sekali — hanya placeholder,

@@ -154,8 +154,25 @@ async function ambilReadingTerbaru(): Promise<Record<string, ReadingRow>> {
 }
 
 async function handleStart(chatId: number) {
+  // Bot inilah yang paling tahu chat_id penggunanya, jadi dialah yang
+  // seharusnya memberitahukannya. Sebelumnya website menyuruh pengguna
+  // membuka api.telegram.org/bot<TOKEN>/getUpdates sendiri — menuntut dia
+  // tahu token bot, lalu mencari angka di tengah JSON, sering dari ponsel.
+  const sudahTerhubung = (await cariOwnerIdDariChatId(chatId)) !== null;
+
+  // Backtick membuat Telegram menampilkannya sebagai kode yang bisa
+  // disalin dengan sekali ketuk.
+  const bagianId =
+    `🆔 *Chat ID kamu:*\n` +
+    `\`${chatId}\`\n\n` +
+    (sudahTerhubung
+      ? `✅ Chat ini sudah terhubung ke akunmu. Peringatan akan dikirim ke sini.\n\n`
+      : `Ketuk angka di atas untuk menyalin, lalu tempel di halaman *Profil* ` +
+        `pada website agar peringatan dikirim ke sini.\n\n`);
+
   const pesan =
     `👋 *Selamat datang di JatayuGuard Bot*\n\n` +
+    bagianId +
     `Command yang tersedia:\n` +
     `/status — ringkasan semua device\n` +
     `/status <device_id> — detail 1 device\n` +
