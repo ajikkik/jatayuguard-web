@@ -113,16 +113,38 @@ function emojiStatus(status: string): string {
   return "🟢";
 }
 
-async function kirimPesan(chatId: number, text: string) {
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "Markdown",
-    }),
-  });
+/**
+ * Mengembalikan true kalau Telegram benar-benar menerima pesannya.
+ *
+ * Sebelumnya hasil fetch dibuang begitu saja, sehingga setiap penolakan
+ * Telegram tidak meninggalkan jejak apa pun — gejalanya cuma "bot diam",
+ * tanpa petunjuk di log. Alasan penolakan dari Telegram justru spesifik
+ * dan langsung menunjuk penyebab, jadi sayang kalau dibuang.
+ */
+async function kirimPesan(chatId: number, text: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "Markdown",
+      }),
+    });
+
+    const hasil = await res.json();
+    if (!hasil.ok) {
+      console.error(
+        `Gagal kirim ke chat ${chatId}: ${hasil.description ?? "alasan tidak diketahui"}`
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghubungi Telegram untuk chat ${chatId}:`, err);
+    return false;
+  }
 }
 
 // Cari user_id pemilik chat_id ini, berdasarkan apa yang sudah diisi

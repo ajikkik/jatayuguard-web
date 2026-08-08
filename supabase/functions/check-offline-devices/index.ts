@@ -33,12 +33,27 @@ function menitSejak(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
 }
 
-async function kirimPesan(chatId: string, text: string) {
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
-  });
+/** Mengembalikan true kalau Telegram benar-benar menerima pesannya. */
+async function kirimPesan(chatId: string, text: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+    });
+
+    const hasil = await res.json();
+    if (!hasil.ok) {
+      console.error(
+        `Gagal kirim ke chat ${chatId}: ${hasil.description ?? "alasan tidak diketahui"}`
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghubungi Telegram untuk chat ${chatId}:`, err);
+    return false;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -88,10 +103,20 @@ Deno.serve(async (req) => {
         `🔔 Peringatan ke-${keBerapa} dari ${MAKS_ALERT}\n\n` +
         `_Periksa koneksi WiFi atau aliran listrik alat ini._`;
 
-      await kirimPesan(profile.telegram_chat_id, pesan);
+      const terkirim = await kirimPesan(profile.telegram_chat_id, pesan);
+
+      // Jatah alert HANYA dipakai kalau pesannya benar-benar sampai.
+      // Sebelumnya hitungan dinaikkan tanpa peduli hasil pengiriman, jadi
+      // dua kegagalan beruntun menghabiskan jatah MAKS_ALERT dan pemilik
+      // tidak akan pernah diberi tahu alatnya mati — kegagalan yang justru
+      // membungkam peringatan yang seharusnya paling terdengar.
+      if (!terkirim) {
+        console.error(`Alert offline untuk ${device.device_id} tidak terkirim, jatah tidak dipakai.`);
+        continue;
+      }
+
       dialert++;
 
-      // Naikkan hitungan alert supaya tidak dikirim berulang terus-terusan
       await supabase
         .from("devices")
         .update({ jumlah_alert_offline: keBerapa })
