@@ -23,6 +23,7 @@
   --line: #9C8A66;        /* garis struktural: batas kartu, pemisah, input */
   --line-halus: #D9CDB8;  /* jahitan dekoratif & garis bantu grafik */
   --input-bg: #F7F3E8;    /* kolom isian sedikit cekung dari bidang kartu */
+  --tenun: rgba(28, 20, 16, 0.025);  /* tinta di atas kain terang */
 }
 
 /* ============================================
@@ -47,6 +48,11 @@ html.dark {
   --line: #7C6F5C;
   --line-halus: #3A332A;
   --input-bg: #191510;
+  /* Di latar gelap, tekstur dibuat dengan MENAMBAH CAHAYA, bukan menambah
+     gelap. Nilai 0,03 dipilih supaya selisih warnanya (17) sebanding
+     dengan yang di mode terang (16), jadi teksturnya terasa sama halus
+     di kedua tema. */
+  --tenun: rgba(232, 223, 200, 0.03);
 }
 
 html, body {
@@ -72,6 +78,12 @@ html, body {
 /* ============================================
    TEKSTUR LATAR: garis horizontal halus,
    mengingatkan pada helai kain mori yang ditenun.
+
+   Warna garisnya dulu ditulis sebagai rgba mentah — satu-satunya warna
+   di berkas ini yang tidak ikut token tema. Akibatnya di mode gelap ia
+   menumpuk tinta gelap di atas kain gelap, dan hasil campurannya persis
+   sama dengan latarnya: teksturnya benar-benar hilang, bukan sekadar
+   samar. Sekarang lewat --tenun supaya tiap tema punya arahnya sendiri.
    ============================================ */
 .bg-kain-bertekstur {
   background-color: var(--kain);
@@ -79,7 +91,7 @@ html, body {
     180deg,
     transparent 0px,
     transparent 23px,
-    rgba(28, 20, 16, 0.025) 24px
+    var(--tenun) 24px
   );
 }
 
