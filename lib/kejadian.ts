@@ -13,9 +13,20 @@ export type JenisKejadian = "BAHAYA" | "WASPADA" | "DIAM";
 export type PembacaanRingkas = {
   created_at: string;
   status: string;
-  suhu: number;
-  kelembapan: number;
+  // Sensor yang gagal baca menyimpan null.
+  suhu: number | null;
+  kelembapan: number | null;
 };
+
+/**
+ * Math.max(x, null) memperlakukan null sebagai 0, sehingga satu pembacaan
+ * gagal akan melaporkan "puncak 0°C" — lebih buruk daripada tidak melapor.
+ */
+function puncakBaru(lama: number | null, baru: number | null) {
+  if (baru === null) return lama;
+  if (lama === null) return baru;
+  return Math.max(lama, baru);
+}
 
 export type Kejadian = {
   jenis: JenisKejadian;
@@ -77,8 +88,8 @@ export function turunkanKejadian(
     jenis: JenisKejadian;
     mulai: string;
     akhir: string;
-    puncakSuhu: number;
-    puncakKelembapan: number;
+    puncakSuhu: number | null;
+    puncakKelembapan: number | null;
     jumlah: number;
   } | null = null;
 
@@ -131,8 +142,8 @@ export function turunkanKejadian(
 
     if (berjalan && berjalan.jenis === jenis) {
       berjalan.akhir = p.created_at;
-      berjalan.puncakSuhu = Math.max(berjalan.puncakSuhu, p.suhu);
-      berjalan.puncakKelembapan = Math.max(berjalan.puncakKelembapan, p.kelembapan);
+      berjalan.puncakSuhu = puncakBaru(berjalan.puncakSuhu, p.suhu);
+      berjalan.puncakKelembapan = puncakBaru(berjalan.puncakKelembapan, p.kelembapan);
       berjalan.jumlah += 1;
     } else {
       tutup(p.created_at);

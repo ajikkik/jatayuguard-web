@@ -11,21 +11,27 @@ import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
 
+// Tipe di halaman ini punya kolom tambahan (id, nilai_uv) yang tidak
+// dipakai dashboard, jadi tetap terpisah dari lib/types.ts.
+//
+// suhu/kelembapan nullable karena DUA sebab berbeda: sensor gagal baca,
+// dan alat yang memang tidak mengukurnya (ALAT_3 hanya mengukur UV).
+// Keduanya harus tampil sebagai "tidak ada nilai", bukan nol.
 type Device = {
   id: string;
   device_id: string;
   nama: string;
-  batas_suhu: number;
-  batas_kelembapan: number;
+  batas_suhu: number | null;
+  batas_kelembapan: number | null;
   last_seen: string | null;
 };
 
 type Reading = {
   id: number;
-  suhu: number;
-  kelembapan: number;
-  nilai_ldr: number;
-  risk_index: number;
+  suhu: number | null;
+  kelembapan: number | null;
+  nilai_uv: number | null;
+  risk_index: number | null;
   status: string;
   created_at: string;
 };
@@ -120,8 +126,10 @@ export default function DeviceDetailPage() {
     if (data) {
       setDevice(data);
       setNamaInput(data.nama || "");
-      setBatasSuhuInput(String(data.batas_suhu));
-      setBatasHumInput(String(data.batas_kelembapan));
+      // Alat yang baru mendaftar belum punya ambang batas. Tanpa penjaga
+      // ini String(null) mengisi kolom dengan teks "null".
+      setBatasSuhuInput(data.batas_suhu?.toString() ?? "");
+      setBatasHumInput(data.batas_kelembapan?.toString() ?? "");
     }
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,7 +141,7 @@ export default function DeviceDetailPage() {
 
       const { data, error } = await supabase
         .from("readings")
-        .select("id, suhu, kelembapan, nilai_ldr, risk_index, status, created_at")
+        .select("id, suhu, kelembapan, nilai_uv, risk_index, status, created_at")
         .eq("device_id", params.deviceId)
         .gte("created_at", batasWaktu)
         .order("created_at", { ascending: false })
@@ -335,8 +343,20 @@ export default function DeviceDetailPage() {
 
   // Grafik butuh urutan menaik (kiri = lama, kanan = baru).
   const menaik = [...readings].reverse();
-  const titikSuhu = ringkasTitik(menaik.map((r) => ({ waktu: new Date(r.created_at).getTime(), nilai: r.suhu })));
-  const titikHum = ringkasTitik(menaik.map((r) => ({ waktu: new Date(r.created_at).getTime(), nilai: r.kelembapan })));
+  // Pembacaan tanpa nilai DIBUANG dari grafik, bukan dijadikan nol.
+  // Nol adalah suhu yang sah; menggambarnya sebagai nol akan mengarang
+  // penurunan drastis yang tidak pernah terjadi. Dan null yang lolos ke
+  // perhitungan koordinat menghasilkan NaN, yang merusak seluruh path SVG.
+  const titikDari = (ambil: (r: Reading) => number | null) =>
+    ringkasTitik(
+      menaik
+        .filter((r) => ambil(r) != null)
+        .map((r) => ({ waktu: new Date(r.created_at).getTime(), nilai: ambil(r) as number }))
+    );
+
+  const titikSuhu = titikDari((r) => r.suhu);
+  const titikHum = titikDari((r) => r.kelembapan);
+  const pembacaanGagal = menaik.filter((r) => r.suhu == null || r.kelembapan == null).length;
   const diringkas = titikSuhu.length < menaik.length;
 
   // Granularitas label sumbu mengikuti rentang data yang BENAR-BENAR ada,
@@ -497,10 +517,16 @@ export default function DeviceDetailPage() {
             />
           </div>
 
-          {(terpotong || diringkas) && (
+          {(terpotong || diringkas || pembacaanGagal > 0) && (
             <p className="mt-6 text-xs text-[var(--tinta-soft)]">
               {terpotong && `Menampilkan ${BATAS_TARIK.toLocaleString("id-ID")} pembacaan terbaru dalam rentang ini. `}
-              {diringkas && `Titik dirata-ratakan per kelompok agar grafik tetap terbaca.`}
+              {diringkas && `Titik dirata-ratakan per kelompok agar grafik tetap terbaca. `}
+              {/* Dibuang diam-diam akan membuat grafik terlihat mulus padahal
+                  sebagian datanya tidak ada — justru hal yang perlu diketahui.
+                  Kata-katanya netral karena penyebabnya bisa sensor gagal
+                  baca ATAU alat yang memang tidak mengukur besaran itu. */}
+              {pembacaanGagal > 0 &&
+                `${pembacaanGagal} pembacaan tidak menyertakan suhu/kelembapan dan tidak digambar.`}
             </p>
           )}
         </div>
@@ -539,9 +565,9 @@ export default function DeviceDetailPage() {
                   <span className="text-sm text-[var(--tinta)] sm:ml-auto">
                     {formatDurasi(k.durasiMs)}
                   </span>
-                  {k.puncakSuhu !== null && (
+                  {k.jumlahPembacaan > 0 && (
                     <span className="w-full pl-6 text-xs text-[var(--tinta-soft)]">
-                      puncak {formatAngka(k.puncakSuhu)}°C · {formatAngka(k.puncakKelembapan ?? 0)}% ·{" "}
+                      puncak {formatAngka(k.puncakSuhu)}°C · {formatAngka(k.puncakKelembapan)}% ·{" "}
                       {k.jumlahPembacaan} pembacaan
                     </span>
                   )}

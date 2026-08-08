@@ -5,11 +5,22 @@ const MENIT = 60_000;
 const JAM = 60 * MENIT;
 const HARI = 24 * JAM;
 
+/** Ditampilkan saat sebuah nilai memang tidak ada. */
+export const TANPA_NILAI = "—";
+
 /**
  * Kolom numeric Postgres bisa kembali sebagai 31.400000000000002.
  * Semua angka sensor lewat sini dulu sebelum ditampilkan.
+ *
+ * Menerima null: sensor yang gagal baca menyimpan suhu/kelembapan sebagai
+ * null, dan ambang batas alat yang baru mendaftar juga belum terisi.
+ * Fungsi ini sebelumnya mengasumsikan angka selalu ada, sehingga satu
+ * pembacaan gagal cukup untuk membuat seluruh dashboard blank.
  */
-export function formatAngka(nilai: number, desimal = 1) {
+export function formatAngka(nilai: number | null | undefined, desimal = 1) {
+  if (nilai === null || nilai === undefined || !Number.isFinite(nilai)) {
+    return TANPA_NILAI;
+  }
   return nilai.toLocaleString("id-ID", {
     minimumFractionDigits: desimal,
     maximumFractionDigits: desimal,

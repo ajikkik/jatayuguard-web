@@ -187,7 +187,7 @@ async function handleStatusSatu(chatId: number, deviceId: string, ownerId: strin
 
   const { data: reading } = await supabase
     .from("readings")
-    .select("suhu, kelembapan, nilai_ldr, risk_index, status, created_at")
+    .select("suhu, kelembapan, nilai_uv, risk_index, status, created_at")
     .eq("device_id", deviceId)
     .order("created_at", { ascending: false })
     .limit(1)

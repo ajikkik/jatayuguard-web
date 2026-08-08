@@ -24,7 +24,7 @@ interface ReadingPayload {
     device_id: string;
     suhu: number | null;
     kelembapan: number | null;
-    nilai_ldr: number;
+    nilai_uv: number;
     risk_index: number;
     status: string;
     created_at: string;

@@ -16,9 +16,12 @@ type Props = {
  */
 export default function BarisAlat({ device, reading, kondisi }: Props) {
   const diam = kondisi === "DIAM" || kondisi === "KOSONG";
-  const suhuLewat = !!reading && device.batas_suhu != null && reading.suhu > device.batas_suhu;
+  const suhuLewat =
+    reading?.suhu != null && device.batas_suhu != null && reading.suhu > device.batas_suhu;
   const humLewat =
-    !!reading && device.batas_kelembapan != null && reading.kelembapan > device.batas_kelembapan;
+    reading?.kelembapan != null &&
+    device.batas_kelembapan != null &&
+    reading.kelembapan > device.batas_kelembapan;
 
   function warnaNilai(lewat: boolean) {
     if (diam) return "text-[var(--tinta-soft)]";

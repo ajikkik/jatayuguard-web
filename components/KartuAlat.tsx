@@ -12,9 +12,12 @@ type Props = {
 export default function KartuAlat({ device, reading, kondisi }: Props) {
   const diam = kondisi === "DIAM" || kondisi === "KOSONG";
 
-  const suhuLewat = !!reading && device.batas_suhu != null && reading.suhu > device.batas_suhu;
+  const suhuLewat =
+    reading?.suhu != null && device.batas_suhu != null && reading.suhu > device.batas_suhu;
   const humLewat =
-    !!reading && device.batas_kelembapan != null && reading.kelembapan > device.batas_kelembapan;
+    reading?.kelembapan != null &&
+    device.batas_kelembapan != null &&
+    reading.kelembapan > device.batas_kelembapan;
 
   // Warna bata dipakai untuk keadaan yang berlaku SEKARANG. Pembacaan dari
   // alat yang sudah diam berminggu-minggu tetap ditampilkan sebagai fakta,

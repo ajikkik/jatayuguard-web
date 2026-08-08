@@ -19,7 +19,7 @@ const KOLOM = [
   "nama_alat",
   "suhu_c",
   "kelembapan_persen",
-  "nilai_ldr",
+  "nilai_uv",
   "indeks_risiko",
   "status",
   "batas_suhu_c",
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
   for (let awal = 0; awal < (count ?? 0); awal += UKURAN_HALAMAN) {
     let kueri = supabase
       .from("readings")
-      .select("device_id, suhu, kelembapan, nilai_ldr, risk_index, status, created_at")
+      .select("device_id, suhu, kelembapan, nilai_uv, risk_index, status, created_at")
       .gte("created_at", dari.toISOString())
       .lte("created_at", sampai.toISOString())
       .order("created_at", { ascending: true })
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
           alat?.nama ?? "",
           angka(r.suhu, 1),
           angka(r.kelembapan, 1),
-          angka(r.nilai_ldr),
+          angka(r.nilai_uv),
           angka(r.risk_index),
           r.status,
           angka(alat?.batas_suhu, 1),
