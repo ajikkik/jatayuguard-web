@@ -198,6 +198,24 @@ html, body {
   }
 }
 
+/* Menutup lebih cepat daripada membuka (100ms): panelnya sudah selesai
+   dipakai, jadi menahannya di layar hanya membuat orang menunggu. */
+.panel-naik {
+  animation: naik 0.1s ease-in forwards;
+  transform-origin: top center;
+}
+
+@keyframes naik {
+  from {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.97);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .segel-bahaya::after { animation: none; }
   html, body { transition: none; }
@@ -209,6 +227,14 @@ html, body {
   }
 
   .panel-turun { animation: none; }
+
+  /* Tanpa animasi, panel yang sedang menutup akan tetap terlihat utuh
+     selama jeda pelepasannya. Disembunyikan langsung supaya menekan
+     tombol tetap terasa seketika. */
+  .panel-naik {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* ============================================

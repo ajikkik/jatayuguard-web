@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IkonChevronBawah, IkonUnduh } from "@/components/Ikon";
 
 // Rentang cepat memakai kode relatif, bukan tanggal mutlak: server yang
@@ -36,6 +36,10 @@ function namaBerkasDari(header: string | null, cadangan: string) {
 
 export default function UnduhCsv({ deviceId, preset = "30h", className }: Props) {
   const [terbuka, setTerbuka] = useState(false);
+  // Panel yang sedang menutup TETAP terpasang sampai animasinya selesai.
+  // Melepasnya begitu tombol ditekan membuat panel lenyap seketika,
+  // sehingga gerakan turunnya terasa seperti janji yang tidak ditepati.
+  const [menutup, setMenutup] = useState(false);
   const [pilihan, setPilihan] = useState<KunciPreset | "khusus">(preset);
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -45,20 +49,62 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
   const [sukses, setSukses] = useState<string | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const jamTutup = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sedikit lebih pendek dari animasi turun: menutup adalah akibat dari
+  // keputusan yang sudah diambil, jadi tidak boleh terasa menahan.
+  const DURASI_TUTUP = 100;
+
+  // Timer dipasang DI LUAR updater setState. Updater bisa dijalankan lebih
+  // dari sekali (StrictMode menjalankannya dua kali di pengembangan), dan
+  // timer yang dipasang di dalamnya akan berganda sementara ref hanya
+  // memegang yang terakhir — pembatalannya lalu meleset dan panel tetap
+  // menutup meski penekanan berikutnya seharusnya membatalkannya.
+  const tutup = useCallback(() => {
+    if (jamTutup.current) return;
+    setMenutup(true);
+    jamTutup.current = setTimeout(() => {
+      jamTutup.current = null;
+      setTerbuka(false);
+      setMenutup(false);
+    }, DURASI_TUTUP);
+  }, []);
+
+  // Timer harus dibatalkan kalau komponennya lepas duluan (pindah
+  // halaman), kalau tidak setState-nya jatuh ke komponen yang sudah mati.
+  useEffect(() => {
+    return () => {
+      if (jamTutup.current) clearTimeout(jamTutup.current);
+    };
+  }, []);
 
   // Tanggal diisi saat panel DIBUKA, bukan saat render: komponen ini ikut
   // dirender di server, dan tanggal di sana bisa berbeda hari dengan
   // browser pengguna sehingga hidrasi tidak cocok.
   function bukaTutup() {
-    const akanBuka = !terbuka;
-    if (akanBuka && !sampai) {
+    // Ditekan lagi selagi panel masih menutup: batalkan penutupannya dan
+    // biarkan panel tetap ada, bukan menunggu ia hilang untuk kemudian
+    // dibuka ulang.
+    if (jamTutup.current) {
+      clearTimeout(jamTutup.current);
+      jamTutup.current = null;
+      setMenutup(false);
+      return;
+    }
+
+    if (terbuka) {
+      tutup();
+      return;
+    }
+
+    if (!sampai) {
       const kini = new Date();
       const seminggu = new Date(kini.getTime() - 6 * 24 * 60 * 60 * 1000);
       setHariIni(tanggalInput(kini));
       setSampai(tanggalInput(kini));
       setDari(tanggalInput(seminggu));
     }
-    setTerbuka(akanBuka);
+    setTerbuka(true);
   }
 
   // Panel menutup saat klik di luar atau tekan Escape — tanpa ini ia
@@ -67,10 +113,10 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
     if (!terbuka) return;
 
     function klikLuar(e: MouseEvent) {
-      if (!panelRef.current?.contains(e.target as Node)) setTerbuka(false);
+      if (!panelRef.current?.contains(e.target as Node)) tutup();
     }
     function tekanEsc(e: KeyboardEvent) {
-      if (e.key === "Escape") setTerbuka(false);
+      if (e.key === "Escape") tutup();
     }
 
     document.addEventListener("mousedown", klikLuar);
@@ -79,7 +125,7 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
       document.removeEventListener("mousedown", klikLuar);
       document.removeEventListener("keydown", tekanEsc);
     };
-  }, [terbuka]);
+  }, [terbuka, tutup]);
 
   async function unduh() {
     setGalat(null);
@@ -150,7 +196,7 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
       <button
         type="button"
         onClick={bukaTutup}
-        aria-expanded={terbuka}
+        aria-expanded={terbuka && !menutup}
         className="inline-flex h-9 items-center gap-2 border border-[var(--line)] px-3 text-xs text-[var(--tinta-soft)] transition hover:border-[var(--soga)] hover:text-[var(--soga)]"
       >
         <IkonUnduh ukuran={14} />
@@ -161,7 +207,7 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
             melihat panelnya. */}
         <IkonChevronBawah
           ukuran={12}
-          className={`transition-transform ${terbuka ? "rotate-180" : ""}`}
+          className={`transition-transform ${terbuka && !menutup ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -175,7 +221,11 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
            20rem yang ditambatkan ke kanan akan menjulur keluar layar dan
            separuh isinya tidak bisa disentuh. Baru dari sm ke atas
            tombolnya berada di kanan, dan tambatan kanan yang benar. */
-        <div className="panel-turun absolute left-0 z-20 mt-2 w-[min(20rem,calc(100vw-3rem))] border border-[var(--line)] bg-[var(--permukaan)] px-5 py-5 text-left shadow-lg sm:left-auto sm:right-0">
+        <div
+          className={`${
+            menutup ? "panel-naik pointer-events-none" : "panel-turun"
+          } absolute left-0 z-20 mt-2 w-[min(20rem,calc(100vw-3rem))] border border-[var(--line)] bg-[var(--permukaan)] px-5 py-5 text-left shadow-lg sm:left-auto sm:right-0`}
+        >
           <h3 className="label-arsip mb-3 !text-[10px]">Rentang waktu</h3>
 
           <div className="mb-4 flex flex-wrap gap-2">
