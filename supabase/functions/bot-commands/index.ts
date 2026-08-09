@@ -168,13 +168,15 @@ async function kirimPesan(chatId: number, text: string): Promise<boolean> {
 // di halaman /profile website. Mengembalikan null kalau chat_id ini
 // belum terdaftar ke akun manapun.
 async function cariOwnerIdDariChatId(chatId: number): Promise<string | null> {
+  // Satu akun boleh mendaftarkan banyak chat, jadi pemetaannya ada di
+  // telegram_chats, bukan lagi satu kolom di profiles.
   const { data } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("telegram_chat_id", String(chatId))
-    .single();
+    .from("telegram_chats")
+    .select("user_id")
+    .eq("chat_id", String(chatId))
+    .maybeSingle();
 
-  return data?.id || null;
+  return data?.user_id || null;
 }
 
 // Ambil reading TERBARU untuk setiap device_id dalam satu query efisien

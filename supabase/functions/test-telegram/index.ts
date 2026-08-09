@@ -82,23 +82,44 @@ Deno.serve(async (req) => {
       return jawab({ ok: false, pesan: "Sesi tidak valid. Masuk ulang lalu coba lagi." }, 401);
     }
 
-    const { data: profile, error: errProfile } = await supabase
-      .from("profiles")
-      .select("telegram_chat_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (errProfile) {
-      return jawab({ ok: false, pesan: "Gagal membaca profil. Coba lagi." }, 502);
+    // Halaman Profil menguji SATU chat tertentu (tiap baris punya tombol
+    // ujinya sendiri), jadi chat_id ikut dikirim di body. Tanpa itu — mis.
+    // dari klien lama — chat pertama yang terdaftar yang diuji.
+    let chatDiminta: string | null = null;
+    try {
+      const body = await req.json();
+      if (body && body.chat_id != null) chatDiminta = String(body.chat_id);
+    } catch {
+      // Body kosong itu sah; artinya "uji chat mana pun yang ada".
     }
 
-    const chatId = profile?.telegram_chat_id;
-    if (!chatId) {
+    // Difilter ke user.id, bukan hanya ke chat_id: policy SELECT-nya
+    // terbuka untuk seluruh tim, sehingga tanpa filter ini seseorang bisa
+    // memancing pesan uji ke chat Telegram milik rekannya.
+    let kueri = supabase
+      .from("telegram_chats")
+      .select("chat_id, label")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    if (chatDiminta) kueri = kueri.eq("chat_id", chatDiminta);
+
+    const { data: chats, error: errChats } = await kueri;
+
+    if (errChats) {
+      return jawab({ ok: false, pesan: "Gagal membaca daftar chat. Coba lagi." }, 502);
+    }
+
+    if (!chats || chats.length === 0) {
       return jawab({
         ok: false,
-        pesan: "Chat ID Telegram belum diisi. Simpan dulu chat ID-mu, baru kirim uji.",
+        pesan: chatDiminta
+          ? "Chat ID itu tidak terdaftar di akunmu. Muat ulang halaman lalu coba lagi."
+          : "Belum ada chat Telegram terdaftar. Tambahkan chat ID dulu, baru kirim uji.",
       });
     }
+
+    const chatId = chats[0].chat_id;
 
     const waktu = new Date().toLocaleString("id-ID", {
       dateStyle: "long",

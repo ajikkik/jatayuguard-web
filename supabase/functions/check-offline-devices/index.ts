@@ -101,14 +101,14 @@ Deno.serve(async (req) => {
       // Sudah mencapai batas maksimal alert untuk periode offline ini -> lewati
       if (device.jumlah_alert_offline >= MAKS_ALERT) continue;
 
-      // Cari chat_id owner device ini
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("telegram_chat_id")
-        .eq("id", device.owner_id)
-        .single();
+      // Owner boleh mendaftarkan banyak tujuan Telegram; alert dikirim
+      // ke semuanya.
+      const { data: chats } = await supabase
+        .from("telegram_chats")
+        .select("chat_id")
+        .eq("user_id", device.owner_id);
 
-      if (!profile?.telegram_chat_id) continue;
+      if (!chats || chats.length === 0) continue;
 
       const namaTampil = device.nama || device.device_id;
       const keBerapa = device.jumlah_alert_offline + 1;
@@ -120,7 +120,14 @@ Deno.serve(async (req) => {
         `🔔 Peringatan ke-${keBerapa} dari ${MAKS_ALERT}\n\n` +
         `_Periksa koneksi WiFi atau aliran listrik alat ini._`;
 
-      const terkirim = await kirimPesan(profile.telegram_chat_id, pesan);
+      // Cukup satu tujuan yang berhasil untuk menganggap owner sudah
+      // diberi tahu. Menuntut semuanya berhasil berarti satu chat yang
+      // memblokir bot akan membuat alert dikirim ulang terus-menerus ke
+      // chat lain yang sudah menerimanya.
+      const hasilKirim = await Promise.all(
+        chats.map((c) => kirimPesan(String(c.chat_id), pesan))
+      );
+      const terkirim = hasilKirim.some(Boolean);
 
       // Jatah alert HANYA dipakai kalau pesannya benar-benar sampai.
       // Sebelumnya hitungan dinaikkan tanpa peduli hasil pengiriman, jadi

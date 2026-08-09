@@ -16,6 +16,50 @@ const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 // owner_id & chat_id pemilik device tersebut.
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+/**
+ * Kirim satu pesan ke satu chat. Mengembalikan true kalau Telegram
+ * menerimanya.
+ *
+ * Markdown lawas Telegram menolak SELURUH pesan kalau ada penanda format
+ * yang tidak berpasangan. Nama alat diisi pengguna dan boleh memuat "_"
+ * atau "*", jadi satu nama seperti "Lemari_Utara" cukup untuk membungkam
+ * peringatan bahaya. Cacat format tidak boleh menghalangi alarm, jadi
+ * pesannya dikirim ulang sebagai teks polos.
+ */
+async function kirimPesan(chatId: string, pesan: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: pesan, parse_mode: "Markdown" }),
+    });
+
+    const hasil = await res.json();
+    if (hasil.ok) return true;
+
+    const alasan = String(hasil.description ?? "alasan tidak diketahui");
+
+    if (/can't parse entities/i.test(alasan)) {
+      console.error(`Markdown ditolak untuk chat ${chatId} (${alasan}). Mengirim ulang sebagai teks polos.`);
+      const ulang = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: pesan }),
+      });
+      const hasilUlang = await ulang.json();
+      if (hasilUlang.ok) return true;
+      console.error(`Kiriman teks polos juga gagal untuk chat ${chatId}: ${hasilUlang.description}`);
+      return false;
+    }
+
+    console.error(`Gagal kirim ke chat ${chatId}: ${alasan}`);
+    return false;
+  } catch (err) {
+    console.error(`Gagal menghubungi Telegram untuk chat ${chatId}:`, err);
+    return false;
+  }
+}
+
 interface ReadingPayload {
   type: "INSERT";
   table: string;
@@ -80,15 +124,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "device belum punya owner" }), { status: 200 });
     }
 
-    // Cari chat_id Telegram milik owner device ini
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("telegram_chat_id")
-      .eq("id", device.owner_id)
-      .single();
+    // Satu owner boleh mendaftarkan banyak tujuan Telegram (ponsel kedua,
+    // grup regu jaga). Peringatan dikirim ke SEMUANYA — memilih satu saja
+    // berarti sebagian penerima yang sengaja didaftarkan tidak diberi tahu.
+    const { data: chats, error: chatsError } = await supabase
+      .from("telegram_chats")
+      .select("chat_id")
+      .eq("user_id", device.owner_id);
 
-    if (profileError || !profile?.telegram_chat_id) {
-      console.error("Chat ID tidak ditemukan untuk owner:", device.owner_id);
+    if (chatsError) {
+      console.error("Gagal membaca daftar chat Telegram:", chatsError);
+      return new Response(JSON.stringify({ error: "gagal baca chat" }), { status: 200 });
+    }
+
+    if (!chats || chats.length === 0) {
+      console.error("Belum ada chat Telegram terdaftar untuk owner:", device.owner_id);
       return new Response(JSON.stringify({ skipped: "chat_id belum diatur" }), { status: 200 });
     }
 
@@ -128,42 +178,26 @@ Deno.serve(async (req) => {
         ? `\n\n⚠️ Sensor ${sensorMati.join(" dan ")} tidak mengirim nilai. Periksa wiring alat.`
         : "");
 
-    const tgResponse = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: profile.telegram_chat_id,
-          text: pesan,
-          parse_mode: "Markdown",
-        }),
-      }
+    // Satu chat yang bermasalah (bot diblokir, chat dihapus) tidak boleh
+    // menghentikan pengiriman ke chat lain, jadi hasilnya dikumpulkan
+    // dan tidak ada yang dilempar ke luar.
+    const hasilKirim = await Promise.all(
+      chats.map((c) => kirimPesan(String(c.chat_id), pesan))
     );
+    const terkirim = hasilKirim.filter(Boolean).length;
 
-    let tgResult = await tgResponse.json();
-
-    // Markdown lawas Telegram menolak SELURUH pesan kalau ada penanda
-    // format yang tidak berpasangan. Nama alat diisi pengguna dan boleh
-    // memuat "_" atau "*", jadi satu nama seperti "Lemari_Utara" cukup
-    // untuk membungkam peringatan bahaya. Cacat format tidak boleh
-    // sampai menghalangi alarm, jadi dikirim ulang sebagai teks polos.
-    if (!tgResult.ok && /can't parse entities/i.test(String(tgResult.description ?? ""))) {
-      console.error(`Markdown ditolak (${tgResult.description}). Mengirim ulang sebagai teks polos.`);
-      const ulang = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: profile.telegram_chat_id, text: pesan }),
-      });
-      tgResult = await ulang.json();
+    if (terkirim === 0) {
+      console.error(`Peringatan ${reading.device_id} tidak sampai ke satu pun dari ${chats.length} chat.`);
+      return new Response(
+        JSON.stringify({ error: "semua pengiriman gagal", tujuan: chats.length }),
+        { status: 200 }
+      );
     }
 
-    if (!tgResult.ok) {
-      console.error("Gagal kirim Telegram:", tgResult);
-      return new Response(JSON.stringify({ error: tgResult }), { status: 200 });
-    }
-
-    return new Response(JSON.stringify({ success: true, device: namaDevice }), { status: 200 });
+    return new Response(
+      JSON.stringify({ success: true, device: namaDevice, terkirim, tujuan: chats.length }),
+      { status: 200 }
+    );
 
   } catch (err) {
     console.error("Error di notify-telegram:", err);
