@@ -160,8 +160,14 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
       {terbuka && (
         /* Sengaja TIDAK memakai .kartu-kain: kelas itu memasang
            position: relative dan menang atas utility `absolute`, sehingga
-           panelnya ikut alur dokumen dan mendorong isi halaman turun. */
-        <div className="absolute right-0 z-20 mt-2 w-[min(20rem,calc(100vw-3rem))] border border-[var(--line)] bg-[var(--permukaan)] px-5 py-5 text-left shadow-lg">
+           panelnya ikut alur dokumen dan mendorong isi halaman turun.
+
+           Ditambatkan ke tepi KIRI tombol di layar sempit. Tombolnya
+           hanya selebar ±150px dan duduk di sisi kiri, jadi panel selebar
+           20rem yang ditambatkan ke kanan akan menjulur keluar layar dan
+           separuh isinya tidak bisa disentuh. Baru dari sm ke atas
+           tombolnya berada di kanan, dan tambatan kanan yang benar. */
+        <div className="absolute left-0 z-20 mt-2 w-[min(20rem,calc(100vw-3rem))] border border-[var(--line)] bg-[var(--permukaan)] px-5 py-5 text-left shadow-lg sm:left-auto sm:right-0">
           <h3 className="label-arsip mb-3 !text-[10px]">Rentang waktu</h3>
 
           <div className="mb-4 flex flex-wrap gap-2">
