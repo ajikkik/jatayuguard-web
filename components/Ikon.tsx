@@ -65,6 +65,15 @@ export function IkonUnduh(p: Props) {
   );
 }
 
+/** Panah bawah penanda "ada pilihan di balik tombol ini". */
+export function IkonChevronBawah(p: Props) {
+  return (
+    <Dasar {...p}>
+      <path d="m6 9 6 6 6-6" />
+    </Dasar>
+  );
+}
+
 export function IkonKirim(p: Props) {
   return (
     <Dasar {...p}>

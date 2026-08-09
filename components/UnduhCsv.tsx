@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IkonUnduh } from "@/components/Ikon";
+import { IkonChevronBawah, IkonUnduh } from "@/components/Ikon";
 
 // Rentang cepat memakai kode relatif, bukan tanggal mutlak: server yang
 // menghitung waktunya, jadi hasilnya tetap bermakna "30 hari terakhir"
@@ -155,6 +155,14 @@ export default function UnduhCsv({ deviceId, preset = "30h", className }: Props)
       >
         <IkonUnduh ukuran={14} />
         Unduh CSV
+        {/* Chevron memberi tahu bahwa tombol ini membuka pilihan, bukan
+            langsung mengunduh satu rentang tetap. Ia ikut berputar saat
+            panel terbuka supaya keadaan tombolnya terbaca tanpa harus
+            melihat panelnya. */}
+        <IkonChevronBawah
+          ukuran={12}
+          className={`transition-transform ${terbuka ? "rotate-180" : ""}`}
+        />
       </button>
 
       {terbuka && (
