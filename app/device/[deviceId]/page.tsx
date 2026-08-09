@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
 import GrafikTren, { type TitikTren } from "@/components/GrafikTren";
-import { IkonUnduh } from "@/components/Ikon";
+import UnduhCsv from "@/components/UnduhCsv";
 import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
@@ -350,10 +350,6 @@ export default function DeviceDetailPage() {
     })
     .slice(0, MAKS_BARIS_TABEL);
 
-  // Rentang diteruskan sebagai kode relatif, bukan timestamp mutlak: server
-  // yang menghitung waktunya, jadi href-nya tetap sama di setiap render.
-  const urlEkspor = `/api/ekspor?device=${encodeURIComponent(device.device_id)}&rentang=${rentang}`;
-
   // Grafik butuh urutan menaik (kiri = lama, kanan = baru).
   const menaik = [...readings].reverse();
   // Pembacaan tanpa nilai DIBUANG dari grafik, bukan dijadikan nol.
@@ -512,18 +508,14 @@ export default function DeviceDetailPage() {
           ))}
 
           {/* Unduhan menarik ulang datanya sendiri di server, jadi tidak
-              terbatas pada 1.500 baris yang sedang dimuat di halaman ini.
+              terbatas pada 1.500 baris yang sedang dimuat di halaman ini —
+              dan rentangnya boleh berbeda dari rentang tampilan, termasuk
+              tanggal pilihan sendiri.
 
               ml-auto hanya dari sm ke atas: di layar sempit baris ini
               membungkus, dan ml-auto akan mendorong tombol sendirian ke
               tepi kanan sehingga terlihat terdampar dari kelompoknya. */}
-          <a
-            href={urlEkspor}
-            className="inline-flex h-11 items-center gap-2 border border-[var(--line)] px-4 text-sm text-[var(--tinta-soft)] transition hover:border-[var(--soga)] hover:text-[var(--soga)] sm:ml-auto"
-          >
-            <IkonUnduh />
-            Unduh CSV
-          </a>
+          <UnduhCsv deviceId={device.device_id} preset={rentang} className="sm:ml-auto" />
         </div>
 
         {/* Dua grafik terpisah, BUKAN satu grafik dua sumbu-Y: suhu (°C) dan

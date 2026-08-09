@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
 import KartuAlat from "@/components/KartuAlat";
 import BarisAlat from "@/components/BarisAlat";
-import { IkonUnduh } from "@/components/Ikon";
+import UnduhCsv from "@/components/UnduhCsv";
 import { waktuRelatif } from "@/lib/format";
 import {
   kondisiAlat,
@@ -215,13 +215,7 @@ export default function DashboardPage() {
                 </p>
 
                 <div className="flex items-center gap-2">
-                  <a
-                    href="/api/ekspor?rentang=30h"
-                    className="inline-flex h-9 items-center gap-2 border border-[var(--line)] px-3 text-xs text-[var(--tinta-soft)] transition hover:border-[var(--soga)] hover:text-[var(--soga)]"
-                  >
-                    <IkonUnduh ukuran={14} />
-                    CSV semua alat · 30 hari
-                  </a>
+                  <UnduhCsv preset="30h" />
 
                   {(["kartu", "baris"] as Tampilan[]).map((t) => (
                     <button
