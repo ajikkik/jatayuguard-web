@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
 import GrafikTren, { type TitikTren } from "@/components/GrafikTren";
 import UnduhCsv from "@/components/UnduhCsv";
+import { AreaRangka, RangkaHalamanAlat } from "@/components/Rangka";
 import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
@@ -286,9 +287,9 @@ export default function DeviceDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-[var(--tinta-soft)]">
-        Memuat…
-      </div>
+      <AreaRangka label="Memuat catatan alat…">
+        <RangkaHalamanAlat />
+      </AreaRangka>
     );
   }
 

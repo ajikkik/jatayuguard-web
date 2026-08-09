@@ -6,6 +6,7 @@ import AppHeader from "@/components/AppHeader";
 import KartuAlat from "@/components/KartuAlat";
 import BarisAlat from "@/components/BarisAlat";
 import UnduhCsv from "@/components/UnduhCsv";
+import { AreaRangka, RangkaBarisAlat, RangkaKartuAlat } from "@/components/Rangka";
 import { waktuRelatif } from "@/lib/format";
 import {
   kondisiAlat,
@@ -237,7 +238,23 @@ export default function DashboardPage() {
           )}
 
           {loading ? (
-            <p className="text-sm text-[var(--tinta-soft)]">Memuat data…</p>
+            // Rangka mengikuti tampilan yang sedang dipilih, jadi susunannya
+            // tidak berubah begitu data datang.
+            <AreaRangka>
+              {tampilan === "kartu" ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {[0, 1, 2].map((i) => (
+                    <RangkaKartuAlat key={i} />
+                  ))}
+                </div>
+              ) : (
+                <div className="kartu-kain divide-y divide-[var(--line-halus)]">
+                  {[0, 1, 2].map((i) => (
+                    <RangkaBarisAlat key={i} />
+                  ))}
+                </div>
+              )}
+            </AreaRangka>
           ) : errorMuat ? (
             // Kegagalan query HARUS dibedakan dari "belum ada alat". Sebelumnya
             // keduanya terlihat sama, sehingga koneksi putus tampil sebagai

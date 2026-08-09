@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
 import KolomSandi from "@/components/KolomSandi";
 import { IkonKirim } from "@/components/Ikon";
+import { AreaRangka, RangkaProfil } from "@/components/Rangka";
 
 type ChatTelegram = {
   id: string;
@@ -240,9 +241,9 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-[var(--tinta-soft)]">
-        Memuat…
-      </div>
+      <AreaRangka label="Memuat profil…">
+        <RangkaProfil />
+      </AreaRangka>
     );
   }
 

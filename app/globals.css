@@ -146,9 +146,69 @@ html, body {
   50% { opacity: 0.55; }
 }
 
+/* ============================================
+   Rangka muat (skeleton)
+
+   Bentuk kasar isi yang sedang diambil, bukan kata "Memuat…".
+   Halamannya jadi tidak melompat saat data datang, dan orang tahu
+   BAGIAN MANA yang belum siap alih-alih menatap layar kosong.
+
+   Kilaunya bergerak melintang, memakai gradien pada latar sendiri
+   sehingga tidak butuh elemen tambahan.
+   ============================================ */
+.rangka {
+  /* Kilaunya sengaja lemah — hanya sampai --line-halus, bukan --line.
+     Rangka yang berkilau terang menarik mata lebih kuat daripada isi
+     yang menggantikannya nanti, dan di layar gelap tampak seperti
+     bidang menyala, bukan tempat kosong yang sedang diisi. */
+  background: linear-gradient(
+    90deg,
+    var(--kain-dim) 0%,
+    var(--line-halus) 50%,
+    var(--kain-dim) 100%
+  );
+  background-size: 200% 100%;
+  animation: kilau 1.6s ease-in-out infinite;
+}
+
+@keyframes kilau {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+
+/* ============================================
+   Panel yang turun dari tombolnya, bukan muncul begitu saja.
+   Gerakannya pendek (120ms): cukup untuk menunjukkan panel itu
+   berasal dari tombol yang barusan ditekan, tanpa menunda orang
+   yang sudah tahu isinya.
+   ============================================ */
+.panel-turun {
+  animation: turun 0.12s ease-out;
+  transform-origin: top center;
+}
+
+@keyframes turun {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .segel-bahaya::after { animation: none; }
   html, body { transition: none; }
+
+  /* Rangka tetap terlihat sebagai bidang, hanya kilaunya yang diam. */
+  .rangka {
+    animation: none;
+    background: var(--kain-dim);
+  }
+
+  .panel-turun { animation: none; }
 }
 
 /* ============================================
