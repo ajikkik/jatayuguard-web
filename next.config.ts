@@ -29,6 +29,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Hanya berlaku di `next dev`. Tanpa ini, membuka dev server lewat IP
+  // jaringan (misal dari HP di WiFi yang sama) membuat Next memblokir
+  // aset dev-nya sendiri: React tidak pernah hydrate, form login jatuh ke
+  // submit HTML biasa, dan halaman cuma memuat ulang tanpa pesan apa pun.
+  allowedDevOrigins: ["192.168.137.1"],
+
   async headers() {
     return [
       {
