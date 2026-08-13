@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { formatAngka, waktuLengkap, waktuRelatif } from "@/lib/format";
 import { LABEL_KONDISI, lewatBatas, SEGEL_KONDISI, type KondisiAlat } from "@/lib/status";
+import type { RataAlat } from "@/lib/rata";
 import type { Device, Reading } from "@/lib/types";
 
 type Props = {
   device: Device;
   reading?: Reading;
   kondisi: KondisiAlat;
+  /** Rata-rata alat ini pada rentang terpilih; tidak ada = belum dimuat. */
+  rata?: RataAlat;
+  labelRentang?: string;
 };
 
 /**
@@ -33,6 +37,7 @@ function Sel({
   batas,
   lewat,
   diam,
+  rata,
   desimal = 1,
 }: {
   label: string;
@@ -41,6 +46,7 @@ function Sel({
   batas: number | null;
   lewat: boolean;
   diam: boolean;
+  rata?: number | null;
   desimal?: number;
 }) {
   return (
@@ -61,6 +67,13 @@ function Sel({
       ) : (
         <span className="text-[var(--tinta-soft)]">—</span>
       )}
+      {/* Rata-rata diredam dan ditaruh di baris kedua: baris ini dibaca
+          untuk membandingkan antar-alat sekarang, rata-rata hanya konteks. */}
+      {rata != null && (
+        <span className="block text-[11px] text-[var(--tinta-soft)]">
+          rata {formatAngka(rata, desimal)}
+        </span>
+      )}
     </div>
   );
 }
@@ -70,7 +83,7 @@ function Sel({
  * Dipakai saat alat sudah banyak, ketika membandingkan antar-alat lebih
  * penting daripada memberi tiap alat ruangnya sendiri.
  */
-export default function BarisAlat({ device, reading, kondisi }: Props) {
+export default function BarisAlat({ device, reading, kondisi, rata, labelRentang }: Props) {
   const diam = kondisi === "DIAM" || kondisi === "KOSONG";
   const suhuLewat = lewatBatas(reading?.suhu, device.batas_suhu);
   const humLewat = lewatBatas(reading?.kelembapan, device.batas_kelembapan);
@@ -92,7 +105,15 @@ export default function BarisAlat({ device, reading, kondisi }: Props) {
         </div>
       </div>
 
-      <Sel label="Suhu" nilai={reading?.suhu} satuan="°C" batas={device.batas_suhu} lewat={suhuLewat} diam={diam} />
+      <Sel
+        label="Suhu"
+        nilai={reading?.suhu}
+        satuan="°C"
+        batas={device.batas_suhu}
+        lewat={suhuLewat}
+        diam={diam}
+        rata={rata?.suhu}
+      />
       <Sel
         label="Kelembapan"
         nilai={reading?.kelembapan}
@@ -100,6 +121,7 @@ export default function BarisAlat({ device, reading, kondisi }: Props) {
         batas={device.batas_kelembapan}
         lewat={humLewat}
         diam={diam}
+        rata={rata?.kelembapan}
       />
       <Sel
         label="UV Index"
@@ -108,6 +130,7 @@ export default function BarisAlat({ device, reading, kondisi }: Props) {
         batas={device.batas_uv}
         lewat={uvLewat}
         diam={diam}
+        rata={rata?.uv}
         desimal={2}
       />
 
@@ -116,6 +139,14 @@ export default function BarisAlat({ device, reading, kondisi }: Props) {
         title={reading ? waktuLengkap(reading.created_at) : undefined}
       >
         {reading ? waktuRelatif(reading.created_at) : "belum ada data"}
+        {rata && rata.jumlah > 0 && labelRentang && (
+          // Alat mati tidak menulis baris apa pun, jadi rata-ratanya hanya
+          // mencakup waktu saat alat masih hidup — bukan rentang penuh.
+          <span className="block">
+            rata = {diam ? "saat aktif dalam " : ""}
+            {labelRentang} terakhir
+          </span>
+        )}
       </div>
     </Link>
   );

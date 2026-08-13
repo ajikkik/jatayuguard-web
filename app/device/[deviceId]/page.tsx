@@ -10,6 +10,7 @@ import UnduhCsv from "@/components/UnduhCsv";
 import { AreaRangka, RangkaHalamanAlat } from "@/components/Rangka";
 import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
+import type { RataAlat } from "@/lib/rata";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
 
 // Tipe di halaman ini punya kolom tambahan (id) yang tidak dipakai
@@ -105,6 +106,7 @@ export default function DeviceDetailPage() {
     kunci: "created_at",
     naik: false,
   });
+  const [rata, setRata] = useState<RataAlat | null>(null);
   const [kejadian, setKejadian] = useState<Kejadian[]>([]);
   const [memuatKejadian, setMemuatKejadian] = useState(false);
   const [errorKejadian, setErrorKejadian] = useState<string | null>(null);
@@ -167,6 +169,27 @@ export default function DeviceDetailPage() {
     [params.deviceId]
   );
 
+  // Rata-rata juga diturunkan di server dari SELURUH pembacaan dalam
+  // rentang, bukan dari 1.500 baris yang dimuat halaman ini — dan bukan
+  // pula dari titik grafik, yang sudah diringkas per kelompok.
+  //
+  // Kegagalannya sengaja tidak memunculkan pesan error: grafiknya tetap
+  // utuh dan terbaca tanpa garis rata-rata, jadi memasang peringatan merah
+  // di sini hanya akan menakuti tanpa ada yang perlu ditindak.
+  const muatRata = useCallback(
+    async (kunci: KunciRentang) => {
+      try {
+        const res = await fetch(`/api/rata-rata?rentang=${kunci}`);
+        if (!res.ok) return setRata(null);
+        const badan = await res.json();
+        setRata(badan.rata?.[params.deviceId] ?? null);
+      } catch {
+        setRata(null);
+      }
+    },
+    [params.deviceId]
+  );
+
   // Kejadian diturunkan di server dari SELURUH pembacaan dalam rentang,
   // bukan dari 1.500 baris yang dimuat halaman ini. Kejadian yang dihitung
   // dari data terpotong bukan cuma kurang lengkap — durasinya salah dan
@@ -202,6 +225,7 @@ export default function DeviceDetailPage() {
       if (ok) {
         await muatReadings(rentang);
         muatKejadian(rentang);
+        muatRata(rentang);
       }
       setLoading(false);
     })();
@@ -213,6 +237,7 @@ export default function DeviceDetailPage() {
     setRentang(kunci);
     setMemuatRentang(true);
     muatKejadian(kunci);
+    muatRata(kunci);
     await muatReadings(kunci);
     setMemuatRentang(false);
   }
@@ -530,6 +555,7 @@ export default function DeviceDetailPage() {
               satuan="°C"
               data={titikSuhu}
               batas={device.batas_suhu ?? null}
+              rata={rata?.suhu ?? null}
               warna="var(--soga)"
               formatWaktu={formatSumbu}
               formatWaktuPanjang={(t) => waktuLengkap(new Date(t).toISOString())}
@@ -541,6 +567,7 @@ export default function DeviceDetailPage() {
               data={titikHum}
               minimum={0}
               batas={device.batas_kelembapan ?? null}
+              rata={rata?.kelembapan ?? null}
               warna="var(--indigo)"
               formatWaktu={formatSumbu}
               formatWaktuPanjang={(t) => waktuLengkap(new Date(t).toISOString())}
@@ -555,6 +582,7 @@ export default function DeviceDetailPage() {
               desimal={2}
               minimum={0}
               batas={device.batas_uv ?? null}
+              rata={rata?.uv ?? null}
               warna="var(--kunyit)"
               formatWaktu={formatSumbu}
               formatWaktuPanjang={(t) => waktuLengkap(new Date(t).toISOString())}

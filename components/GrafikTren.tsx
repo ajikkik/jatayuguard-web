@@ -11,6 +11,14 @@ type Props = {
   data: TitikTren[];
   /** Ambang batas alat; digambar sebagai garis acuan putus-putus. */
   batas: number | null;
+  /**
+   * Rata-rata seluruh rentang, digambar sebagai garis acuan tipis.
+   * Dihitung di server dari SEMUA pembacaan dalam rentang, bukan dari titik
+   * yang digambar di sini — grafik dibatasi 1.500 baris dan titiknya sudah
+   * diringkas per kelompok, jadi merata-ratakannya lagi bukan rata-rata
+   * rentang yang sebenarnya.
+   */
+  rata?: number | null;
   /** Warna garis, mis. "var(--soga)". Satu seri per grafik. */
   warna: string;
   formatWaktu: (t: number) => string;
@@ -52,6 +60,7 @@ export default function GrafikTren({
   satuan,
   data,
   batas,
+  rata,
   warna,
   formatWaktu,
   formatWaktuPanjang,
@@ -89,6 +98,13 @@ export default function GrafikTren({
       lo = Math.min(lo, batas);
       hi = Math.max(hi, batas);
     }
+    // Rata-rata datang dari seluruh rentang, sedangkan grafik bisa hanya
+    // memuat sebagiannya. Jadi nilainya tidak dijamin berada di antara
+    // titik yang tergambar, dan domainnya harus ikut melebar.
+    if (rata != null) {
+      lo = Math.min(lo, rata);
+      hi = Math.max(hi, rata);
+    }
     if (lo === hi) {
       lo -= 1;
       hi += 1;
@@ -114,7 +130,7 @@ export default function GrafikTren({
         : "";
 
     return { plotW, plotH, tick, domLo, domHi, xAt, yAt, garis, isian, dasar };
-  }, [lebar, data, batas, minimum]);
+  }, [lebar, data, batas, rata, minimum]);
 
   const terakhir = data[data.length - 1];
   const titikAktif = aktif != null ? data[aktif] : null;
@@ -156,7 +172,9 @@ export default function GrafikTren({
           Math.min(...data.map((d) => d.nilai)), desimal
         )}${satuan}, tertinggi ${formatAngka(Math.max(...data.map((d) => d.nilai)), desimal)}${satuan}, terakhir ${formatAngka(
           terakhir?.nilai ?? 0, desimal
-        )}${satuan}.${batas != null ? ` Ambang batas ${formatAngka(batas, desimal)}${satuan}.` : ""}`;
+        )}${satuan}.${rata != null ? ` Rata-rata rentang ${formatAngka(rata, desimal)}${satuan}.` : ""}${
+          batas != null ? ` Ambang batas ${formatAngka(batas, desimal)}${satuan}.` : ""
+        }`;
 
   return (
     <div>
@@ -164,12 +182,20 @@ export default function GrafikTren({
         <h3 className="label-arsip">
           {satuan ? `${judul} (${satuan})` : judul}
         </h3>
-        {batas != null && (
-          <span className="text-[11px] text-[var(--tinta-soft)]">
-            batas {formatAngka(batas, desimal)}
-            {satuan}
-          </span>
-        )}
+        <span className="flex items-baseline gap-3 text-[11px] text-[var(--tinta-soft)]">
+          {rata != null && (
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>
+              rata-rata {formatAngka(rata, desimal)}
+              {satuan}
+            </span>
+          )}
+          {batas != null && (
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>
+              batas {formatAngka(batas, desimal)}
+              {satuan}
+            </span>
+          )}
+        </span>
       </div>
 
       <div
@@ -227,6 +253,33 @@ export default function GrafikTren({
 
               {/* Wash 10% di bawah garis — bukan blok pekat */}
               {geo.isian && <path d={geo.isian} fill={warna} opacity={0.1} />}
+
+              {/* Garis rata-rata. Sengaja dibedakan tegas dari garis ambang:
+                  putus-putusnya lebih rapat, warnanya netral, dan tebalnya
+                  separuh. Dua garis acuan yang mirip di satu grafik akan
+                  saling tertukar — dan tertukar antara "rata-rata" dengan
+                  "batas bahaya" adalah kekeliruan yang mahal. */}
+              {rata != null && (
+                <>
+                  <line
+                    x1={PAD.kiri}
+                    x2={lebar - PAD.kanan}
+                    y1={geo.yAt(rata)}
+                    y2={geo.yAt(rata)}
+                    stroke="var(--tinta-soft)"
+                    strokeWidth={1}
+                    strokeDasharray="2 3"
+                  />
+                  <text
+                    x={PAD.kiri + 4}
+                    y={geo.yAt(rata) - 4}
+                    fontSize={10}
+                    fill="var(--tinta-soft)"
+                  >
+                    rata-rata
+                  </text>
+                </>
+              )}
 
               {/* Garis ambang batas: putus-putus DISENGAJA, karena ini memang
                   ambang, bukan garis bantu biasa */}

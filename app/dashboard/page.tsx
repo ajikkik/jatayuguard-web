@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
 import KartuAlat from "@/components/KartuAlat";
@@ -8,6 +8,7 @@ import BarisAlat from "@/components/BarisAlat";
 import UnduhCsv from "@/components/UnduhCsv";
 import { AreaRangka, RangkaBarisAlat, RangkaKartuAlat } from "@/components/Rangka";
 import { waktuRelatif } from "@/lib/format";
+import { RENTANG_RATA, type KunciRentangRata, type RataAlat } from "@/lib/rata";
 import {
   kondisiAlat,
   perluPerhatian,
@@ -29,6 +30,12 @@ const AMBANG_TAMPILAN_BARIS = 6;
 // baru ketika data justru berhenti datang.
 const INTERVAL_SEGAR_MS = 30 * 1000;
 
+// Rata-rata tidak ikut pembaruan realtime: satu pembacaan baru hampir tidak
+// menggeser rata-rata 24 jam, apalagi 30 hari. Menghitung ulang tiap
+// pembacaan masuk hanya membebani database tanpa mengubah angka yang
+// terlihat, jadi cukup disegarkan berkala.
+const INTERVAL_RATA_MS = 5 * 60 * 1000;
+
 export default function DashboardPage() {
   const supabase = createClient();
   const [devices, setDevices] = useState<Device[]>([]);
@@ -37,6 +44,11 @@ export default function DashboardPage() {
   const [errorMuat, setErrorMuat] = useState<string | null>(null);
   const [koneksi, setKoneksi] = useState<StatusKoneksi>("menyambung");
   const [tampilanManual, setTampilanManual] = useState<Tampilan | null>(null);
+  const [rentangRata, setRentangRata] = useState<KunciRentangRata>("24j");
+  const [rataRata, setRataRata] = useState<Record<string, RataAlat>>({});
+  const [memuatRata, setMemuatRata] = useState(true);
+  const [errorRata, setErrorRata] = useState<string | null>(null);
+  const nomorRata = useRef(0);
 
   // Dipakai hanya untuk memaksa render ulang berkala (lihat INTERVAL_SEGAR_MS).
   const [, setDetak] = useState(0);
@@ -86,6 +98,34 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Rata-rata dihitung di server (agregasi Postgres) supaya browser tidak
+  // perlu menarik ribuan baris hanya untuk beberapa angka per alat.
+  const muatRata = useCallback(async (kunci: KunciRentangRata) => {
+    // Rentang 30 hari lebih lambat daripada 24 jam. Kalau user berpindah
+    // cepat, jawaban lama bisa tiba belakangan dan menimpa yang baru —
+    // angka 30 hari tampil di bawah tombol "24 jam". Hanya permintaan
+    // terakhir yang boleh menulis hasil.
+    const nomor = ++nomorRata.current;
+    setMemuatRata(true);
+    setErrorRata(null);
+    try {
+      const res = await fetch(`/api/rata-rata?rentang=${kunci}`);
+      const badan = await res.json().catch(() => null);
+      if (nomor !== nomorRata.current) return;
+      if (!res.ok) {
+        setErrorRata(badan?.error ?? "Gagal memuat rata-rata pembacaan.");
+        setRataRata({});
+      } else {
+        setRataRata(badan.rata ?? {});
+      }
+    } catch {
+      if (nomor !== nomorRata.current) return;
+      setErrorRata("Gagal memuat rata-rata pembacaan. Periksa koneksi internetmu.");
+      setRataRata({});
+    }
+    if (nomor === nomorRata.current) setMemuatRata(false);
+  }, []);
+
   useEffect(() => {
     muatData();
 
@@ -118,6 +158,12 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [muatData]);
 
+  useEffect(() => {
+    muatRata(rentangRata);
+    const interval = setInterval(() => muatRata(rentangRata), INTERVAL_RATA_MS);
+    return () => clearInterval(interval);
+  }, [rentangRata, muatRata]);
+
   // Kondisi diturunkan sekali di sini, lalu dipakai untuk pengurutan,
   // ringkasan, dan tiap kartu/baris — supaya semuanya tidak bisa berbeda.
   const daftar = devices
@@ -127,7 +173,11 @@ export default function DashboardPage() {
         reading?.status,
         reading?.created_at ?? device.last_seen
       );
-      return { device, reading, kondisi };
+      // Alat yang diam tetap dapat rata-rata. Alat yang mati tidak menulis
+      // baris apa pun, jadi rata-ratanya otomatis hanya mencakup waktu saat
+      // alat masih hidup — bukan rentang penuh yang tertulis di tombol.
+      // Kartu dan barisnya menuliskan perbedaan itu.
+      return { device, reading, kondisi, rata: rataRata[device.device_id] };
     })
     .sort((a, b) => {
       const beda = PERINGKAT[a.kondisi] - PERINGKAT[b.kondisi];
@@ -215,7 +265,23 @@ export default function DashboardPage() {
                   )}
                 </p>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="label-arsip mr-1 !text-[10px]">Rata-rata</span>
+                  {(Object.keys(RENTANG_RATA) as KunciRentangRata[]).map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setRentangRata(k)}
+                      aria-pressed={rentangRata === k}
+                      className={`inline-flex h-9 items-center border px-3 text-xs transition ${
+                        rentangRata === k
+                          ? "border-[var(--soga)] text-[var(--soga)]"
+                          : "border-[var(--line)] text-[var(--tinta-soft)] hover:border-[var(--soga)] hover:text-[var(--soga)]"
+                      }`}
+                    >
+                      {RENTANG_RATA[k].label}
+                    </button>
+                  ))}
+
                   <UnduhCsv preset="30h" />
 
                   {(["kartu", "baris"] as Tampilan[]).map((t) => (
@@ -234,6 +300,25 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Kegagalan menghitung rata-rata TIDAK boleh terlihat sebagai
+                  "alat ini memang tidak punya rata-rata". Selama tidak ada
+                  angka, alasannya harus tertulis. */}
+              {errorRata ? (
+                <p role="alert" className="mb-4 text-xs text-[var(--bata)]">
+                  {errorRata}{" "}
+                  <button
+                    onClick={() => muatRata(rentangRata)}
+                    className="underline hover:text-[var(--soga)]"
+                  >
+                    Coba lagi
+                  </button>
+                </p>
+              ) : memuatRata && Object.keys(rataRata).length === 0 ? (
+                <p className="mb-4 text-xs text-[var(--tinta-soft)]" aria-live="polite">
+                  Menghitung rata-rata {RENTANG_RATA[rentangRata].label} terakhir…
+                </p>
+              ) : null}
             </>
           )}
 
@@ -281,14 +366,28 @@ export default function DashboardPage() {
             </div>
           ) : tampilan === "kartu" ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {daftar.map(({ device, reading, kondisi }) => (
-                <KartuAlat key={device.id} device={device} reading={reading} kondisi={kondisi} />
+              {daftar.map(({ device, reading, kondisi, rata }) => (
+                <KartuAlat
+                  key={device.id}
+                  device={device}
+                  reading={reading}
+                  kondisi={kondisi}
+                  rata={rata}
+                  labelRentang={RENTANG_RATA[rentangRata].label}
+                />
               ))}
             </div>
           ) : (
             <div className="kartu-kain divide-y divide-[var(--line-halus)]">
-              {daftar.map(({ device, reading, kondisi }) => (
-                <BarisAlat key={device.id} device={device} reading={reading} kondisi={kondisi} />
+              {daftar.map(({ device, reading, kondisi, rata }) => (
+                <BarisAlat
+                  key={device.id}
+                  device={device}
+                  reading={reading}
+                  kondisi={kondisi}
+                  rata={rata}
+                  labelRentang={RENTANG_RATA[rentangRata].label}
+                />
               ))}
             </div>
           )}
