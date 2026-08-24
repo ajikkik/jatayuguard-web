@@ -20,6 +20,10 @@ export default function AuthCallbackPage() {
   const router = useRouter();
   const supabase = createClient();
   const [gagal, setGagal] = useState(false);
+  // Isi fragment saat gagal. Tanpa ini layar gagal tidak bisa membedakan
+  // "token tidak pernah sampai ke halaman" dari "token sampai tapi tidak
+  // jadi sesi" — dua masalah dengan perbaikan yang sama sekali berbeda.
+  const [rincian, setRincian] = useState<string>("");
 
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -59,7 +63,14 @@ export default function AuthCallbackPage() {
 
     // Tidak ada sesi setelah beberapa detik: tautannya memang tidak sah.
     const timeout = setTimeout(() => {
-      if (!selesai) setGagal(true);
+      if (selesai) return;
+      const kunci = [...hash.keys()];
+      setRincian(
+        kunci.length === 0
+          ? "URL tidak membawa token sama sekali."
+          : `URL membawa: ${kunci.join(", ")} — tapi sesi tidak terbentuk.`
+      );
+      setGagal(true);
     }, 4000);
 
     return () => {
@@ -77,6 +88,9 @@ export default function AuthCallbackPage() {
             <p className="mb-4 text-sm text-[var(--bata)]">
               Tautan tidak valid atau sudah kedaluwarsa.
             </p>
+            {rincian && (
+              <p className="mb-4 break-words text-xs text-[var(--tinta-soft)]">{rincian}</p>
+            )}
             <a href="/login" className="text-sm text-[var(--soga)] underline">
               Kembali ke halaman masuk
             </a>
