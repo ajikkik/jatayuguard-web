@@ -12,9 +12,11 @@ import { createClient } from "@/lib/supabase/client";
  * Fragment tidak pernah dikirim ke server, jadi /auth/confirm (route handler)
  * tidak bisa membacanya — halaman client inilah yang menanganinya.
  *
- * Supabase client memproses fragment itu sendiri saat dibuat
- * (detectSessionInUrl), yang perlu dilakukan di sini hanya menunggu sesinya
- * jadi lalu mengarahkan sesuai jenis tautan.
+ * Tokennya dipasang manual lewat setSession, bukan diserahkan ke deteksi
+ * otomatis (detectSessionInUrl). @supabase/ssr mengunci klien ke flowType
+ * "pkce", dan auth-js menolak token fragment begitu flow-nya pkce
+ * ("Not a valid PKCE flow url"): tokennya sampai ke halaman lalu dibuang
+ * diam-diam, dan layar hanya bilang tautannya kedaluwarsa.
  */
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -46,36 +48,44 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    let selesai = false;
-    const lanjut = () => {
-      if (selesai) return;
-      selesai = true;
+    const accessToken = hash.get("access_token");
+    const refreshToken = hash.get("refresh_token");
+
+    let batal = false;
+
+    (async () => {
+      if (!accessToken || !refreshToken) {
+        const kunci = [...hash.keys()];
+        setRincian(
+          kunci.length === 0
+            ? "URL tidak membawa token sama sekali."
+            : `URL membawa: ${kunci.join(", ")} — tanpa token sesi yang lengkap.`
+        );
+        setGagal(true);
+        return;
+      }
+
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (batal) return;
+
+      if (error) {
+        setRincian(error.message);
+        setGagal(true);
+        return;
+      }
+
+      // Token dihapus dari URL supaya tidak ikut tersimpan di riwayat
+      // browser atau tersalin saat alamatnya dibagikan.
+      window.history.replaceState(null, "", window.location.pathname);
       router.replace(tujuan);
-    };
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) lanjut();
-    });
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) lanjut();
-    });
-
-    // Tidak ada sesi setelah beberapa detik: tautannya memang tidak sah.
-    const timeout = setTimeout(() => {
-      if (selesai) return;
-      const kunci = [...hash.keys()];
-      setRincian(
-        kunci.length === 0
-          ? "URL tidak membawa token sama sekali."
-          : `URL membawa: ${kunci.join(", ")} — tapi sesi tidak terbentuk.`
-      );
-      setGagal(true);
-    }, 4000);
+    })();
 
     return () => {
-      listener.subscription.unsubscribe();
-      clearTimeout(timeout);
+      batal = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
