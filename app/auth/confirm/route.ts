@@ -7,10 +7,29 @@ import { createClient } from "@/lib/supabase/server";
 // pengisian sandi baru, bukan langsung di dashboard.
 const PERLU_SANDI: EmailOtpType[] = ["invite", "recovery"];
 
-function halamanSandi(type: string | null, status?: string) {
+/**
+ * Alamat halaman sandi untuk kasus gagal.
+ *
+ * `sebab` dan `pesan` ikut dibawa. Tanpa keduanya layar gagal hanya bisa
+ * bilang "kedaluwarsa", padahal tiga hal yang sangat berbeda berujung ke
+ * sini: Supabase menolak token di /auth/v1/verify (otp_expired — tautan
+ * sudah dipakai atau lewat masa berlaku), verifyOtp gagal, atau penukaran
+ * kode PKCE gagal (code_verifier tidak ada karena tautan dibuka di
+ * browser atau perangkat lain). Perbaikannya beda-beda, jadi jangan
+ * disamarkan jadi satu pesan.
+ */
+function halamanSandi(
+  type: string | null,
+  gagal?: { sebab?: string | null; pesan?: string | null }
+) {
   const tipe = type === "invite" ? "invite" : "recovery";
-  const suffix = status ? `&status=${status}` : "";
-  return `/reset-password?tipe=${tipe}${suffix}`;
+  const url = new URLSearchParams({ tipe });
+  if (gagal) {
+    url.set("status", "kedaluwarsa");
+    if (gagal.sebab) url.set("sebab", gagal.sebab);
+    if (gagal.pesan) url.set("pesan", gagal.pesan);
+  }
+  return `/reset-password?${url.toString()}`;
 }
 
 /**
@@ -33,30 +52,41 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const type = searchParams.get("type");
   const next = searchParams.get("next");
-  const adaError = searchParams.get("error") ?? searchParams.get("error_description");
+  const error = searchParams.get("error");
+  const errorCode = searchParams.get("error_code");
+  const errorDescription = searchParams.get("error_description");
 
   const tujuan =
     next ?? (type && PERLU_SANDI.includes(type as EmailOtpType) ? halamanSandi(type) : "/dashboard");
 
   const ke = (path: string) => NextResponse.redirect(new URL(path, request.url));
 
-  if (adaError) {
-    return ke(halamanSandi(type, "kedaluwarsa"));
+  // Supabase sudah menolak tokennya sendiri sebelum sampai ke sini. Pada alur
+  // PKCE sebabnya datang sebagai query (bukan fragment) dan tanpa `type`.
+  if (error || errorCode || errorDescription) {
+    return ke(
+      halamanSandi(type, {
+        sebab: errorCode ?? error,
+        pesan: errorDescription,
+      })
+    );
   }
 
   const supabase = await createClient();
 
   if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({
+    const { error: gagal } = await supabase.auth.verifyOtp({
       type: type as EmailOtpType,
       token_hash: tokenHash,
     });
-    return ke(error ? halamanSandi(type, "kedaluwarsa") : tujuan);
+    return ke(gagal ? halamanSandi(type, { sebab: "verify_otp", pesan: gagal.message }) : tujuan);
   }
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    return ke(error ? halamanSandi(type, "kedaluwarsa") : tujuan);
+    const { error: gagal } = await supabase.auth.exchangeCodeForSession(code);
+    return ke(
+      gagal ? halamanSandi(type, { sebab: "exchange_code", pesan: gagal.message }) : tujuan
+    );
   }
 
   // Tidak ada parameter yang terbaca server. Kemungkinan token dikirim sebagai
