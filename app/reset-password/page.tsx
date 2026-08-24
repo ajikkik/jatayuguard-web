@@ -27,6 +27,10 @@ function IsiResetPassword() {
   // /auth/confirm sudah mencoba menukar token dan gagal — tidak ada gunanya
   // menunggu event sesi apa pun lagi.
   const tautanGagal = searchParams.get("status") === "kedaluwarsa";
+  // Diteruskan apa adanya dari Supabase supaya kegagalan bisa dibedakan:
+  // token kedaluwarsa/sudah dipakai, tautan salah, atau sebab lain.
+  const sebabGagal = searchParams.get("sebab");
+  const pesanGagal = searchParams.get("pesan");
   const supabase = createClient();
 
   const [passwordBaru, setPasswordBaru] = useState("");
@@ -127,6 +131,12 @@ function IsiResetPassword() {
                   ? "Tautan undangan tidak valid atau sudah kedaluwarsa. Minta pengelola sistem mengirim undangan baru."
                   : "Tautan tidak valid atau sudah kedaluwarsa. Silakan minta tautan reset baru dari halaman masuk."}
               </p>
+              {(sebabGagal || pesanGagal) && (
+                <p className="mb-4 text-xs text-[var(--tinta-soft)]">
+                  {pesanGagal || sebabGagal}
+                  {pesanGagal && sebabGagal ? ` (${sebabGagal})` : ""}
+                </p>
+              )}
               <a href="/login" className="text-sm text-[var(--soga)] underline">
                 Kembali ke halaman masuk
               </a>

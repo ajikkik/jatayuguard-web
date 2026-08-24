@@ -29,8 +29,16 @@ export default function AuthCallbackPage() {
         ? `/reset-password?tipe=${tipe}`
         : "/dashboard";
 
-    if (hash.get("error") || hash.get("error_description")) {
-      router.replace(`/reset-password?tipe=${tipe ?? "recovery"}&status=kedaluwarsa`);
+    // Sebab penolakan ikut dibawa: "otp_expired" (kedaluwarsa atau sudah
+    // dipakai) dan "access_denied" butuh penanganan berbeda dari sisi
+    // pengelola, jadi jangan disamarkan jadi satu pesan.
+    const sebab = hash.get("error_code") ?? hash.get("error");
+    if (sebab || hash.get("error_description")) {
+      const pesan = hash.get("error_description") ?? "";
+      router.replace(
+        `/reset-password?tipe=${tipe ?? "recovery"}&status=kedaluwarsa` +
+          `&sebab=${encodeURIComponent(sebab ?? "")}&pesan=${encodeURIComponent(pesan)}`
+      );
       return;
     }
 
