@@ -29,6 +29,14 @@ export async function proxy(request: NextRequest) {
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   const isResetPasswordPage = request.nextUrl.pathname.startsWith("/reset-password");
+  const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/");
+
+  // Tautan dari email (undangan, reset sandi) datang tanpa sesi. Kalau
+  // dilempar ke /login seperti rute lain, tokennya hilang sebelum sempat
+  // ditukar jadi sesi. Rute inilah yang membuat sesinya.
+  if (isAuthCallback) {
+    return supabaseResponse;
+  }
 
   // Halaman reset-password punya alurnya sendiri (session sementara dari
   // link email), jadi dilewati dari logic redirect login/dashboard biasa.

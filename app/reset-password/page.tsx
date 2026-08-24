@@ -1,13 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
 import KolomSandi from "@/components/KolomSandi";
 
+/**
+ * useSearchParams menuntut Suspense di sekelilingnya; tanpa itu Next
+ * menolak mem-prerender halaman ini.
+ */
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <IsiResetPassword />
+    </Suspense>
+  );
+}
+
+function IsiResetPassword() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // "invite" = akun baru yang belum pernah punya sandi, "recovery" = lupa sandi.
+  // Hanya mengubah teks; alur teknisnya sama persis.
+  const tipe = searchParams.get("tipe") === "invite" ? "invite" : "recovery";
+  // /auth/confirm sudah mencoba menukar token dan gagal — tidak ada gunanya
+  // menunggu event sesi apa pun lagi.
+  const tautanGagal = searchParams.get("status") === "kedaluwarsa";
   const supabase = createClient();
 
   const [passwordBaru, setPasswordBaru] = useState("");
@@ -15,29 +34,37 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [berhasil, setBerhasil] = useState(false);
-  const [statusTautan, setStatusTautan] = useState<"memeriksa" | "valid" | "invalid">("memeriksa");
+  const [statusTautan, setStatusTautan] = useState<"memeriksa" | "valid" | "invalid">(
+    tautanGagal ? "invalid" : "memeriksa"
+  );
 
   useEffect(() => {
-    // Supabase mengirim token reset lewat URL fragment (#access_token=...),
-    // yang hanya bisa dibaca di sisi browser (client), bukan server.
-    // onAuthStateChange akan memunculkan event PASSWORD_RECOVERY begitu
-    // Supabase client selesai memproses token tersebut dari URL dan
-    // membuat session sementara untuk reset password.
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setStatusTautan("valid");
-      } else if (event === "SIGNED_IN" && session) {
-        // Beberapa versi Supabase langsung memunculkan SIGNED_IN
-        // alih-alih PASSWORD_RECOVERY tergantung konfigurasi, jadi
-        // kita anggap valid juga di kasus ini.
-        setStatusTautan("valid");
-      }
+    if (tautanGagal) return;
+
+    let sudah = false;
+    const tandaiValid = () => {
+      sudah = true;
+      setStatusTautan("valid");
+    };
+
+    // Dua jalur bisa membuat sesi di halaman ini:
+    // 1. Sesi sudah jadi di server oleh /auth/confirm -> terbaca getSession().
+    // 2. Token datang sebagai fragment (#access_token=...) yang diproses
+    //    Supabase client di browser -> muncul sebagai event.
+    // Eventnya bisa PASSWORD_RECOVERY, SIGNED_IN, atau INITIAL_SESSION
+    // tergantung versi dan alur; yang menentukan hanyalah ada tidaknya sesi.
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) tandaiValid();
     });
 
-    // Jaga-jaga: kalau setelah beberapa detik tidak ada event sama sekali,
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) tandaiValid();
+    });
+
+    // Jaga-jaga: kalau setelah beberapa detik tetap tidak ada sesi,
     // berarti tautan memang sudah tidak valid/kedaluwarsa.
     const timeout = setTimeout(() => {
-      setStatusTautan((status) => (status === "memeriksa" ? "invalid" : status));
+      if (!sudah) setStatusTautan("invalid");
     }, 3000);
 
     return () => {
@@ -86,7 +113,7 @@ export default function ResetPasswordPage() {
         <div className="mb-8 text-center">
           <p className="label-arsip mb-2">Arsip Suhu &amp; Kelembapan</p>
           <h1 className="judul text-[34px] tracking-tight text-[var(--tinta)]">
-            Atur Ulang Sandi
+            {tipe === "invite" ? "Buat Kata Sandi" : "Atur Ulang Sandi"}
           </h1>
         </div>
 
@@ -96,7 +123,9 @@ export default function ResetPasswordPage() {
           ) : statusTautan === "invalid" ? (
             <div className="text-center">
               <p className="mb-4 text-sm text-[var(--bata)]">
-                Tautan tidak valid atau sudah kedaluwarsa. Silakan minta tautan reset baru dari halaman masuk.
+                {tipe === "invite"
+                  ? "Tautan undangan tidak valid atau sudah kedaluwarsa. Minta pengelola sistem mengirim undangan baru."
+                  : "Tautan tidak valid atau sudah kedaluwarsa. Silakan minta tautan reset baru dari halaman masuk."}
               </p>
               <a href="/login" className="text-sm text-[var(--soga)] underline">
                 Kembali ke halaman masuk
@@ -104,13 +133,21 @@ export default function ResetPasswordPage() {
             </div>
           ) : berhasil ? (
             <p className="text-center text-sm text-[var(--indigo)]">
-              Kata sandi berhasil diubah. Mengalihkan ke ruang pemantauan…
+              {tipe === "invite"
+                ? "Akun siap dipakai. Mengalihkan ke ruang pemantauan…"
+                : "Kata sandi berhasil diubah. Mengalihkan ke ruang pemantauan…"}
             </p>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {tipe === "invite" && (
+                <p className="text-sm text-[var(--tinta-soft)]">
+                  Undangan diterima. Buat kata sandi untuk menyelesaikan pendaftaran akunmu.
+                </p>
+              )}
+
               <KolomSandi
                 id="password-baru"
-                label="Kata sandi baru"
+                label={tipe === "invite" ? "Kata sandi" : "Kata sandi baru"}
                 value={passwordBaru}
                 onChange={setPasswordBaru}
                 autoComplete="new-password"
@@ -125,7 +162,7 @@ export default function ResetPasswordPage() {
                 value={konfirmasiPassword}
                 onChange={setKonfirmasiPassword}
                 autoComplete="new-password"
-                placeholder="Ulangi kata sandi baru"
+                placeholder={tipe === "invite" ? "Ulangi kata sandi" : "Ulangi kata sandi baru"}
                 required
               />
 
@@ -143,7 +180,11 @@ export default function ResetPasswordPage() {
                 disabled={loading}
                 className="w-full bg-[var(--soga)] py-3 text-[15px] font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
               >
-                {loading ? "Menyimpan…" : "Simpan kata sandi baru"}
+                {loading
+                  ? "Menyimpan…"
+                  : tipe === "invite"
+                  ? "Buat akun"
+                  : "Simpan kata sandi baru"}
               </button>
             </form>
           )}

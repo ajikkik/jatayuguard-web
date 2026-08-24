@@ -80,8 +80,11 @@ export default function LoginPage() {
     e.preventDefault();
     setStatusReset("loading");
 
+    // Diarahkan ke /auth/confirm, bukan langsung ke /reset-password: token
+    // dari email harus ditukar jadi sesi di server dulu supaya halaman
+    // sandinya tidak dianggap "belum login" lalu dilempar ke sini lagi.
     const { error } = await supabase.auth.resetPasswordForEmail(emailReset, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/auth/confirm?type=recovery`,
     });
 
     setStatusReset(error ? "error" : "terkirim");
