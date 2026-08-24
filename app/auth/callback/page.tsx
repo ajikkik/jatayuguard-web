@@ -28,6 +28,17 @@ export default function AuthCallbackPage() {
   const [rincian, setRincian] = useState<string>("");
 
   useEffect(() => {
+    // Alur PKCE menaruh kodenya di query (?code=...), bukan fragment.
+    // Penukarannya harus di server: cookie sesi hasil exchangeCodeForSession
+    // baru terbaca proxy kalau di-set dari sana, dan code_verifier (kalau
+    // ada) memang tersimpan sebagai cookie. Rute /auth/confirm sudah
+    // melakukannya, jadi teruskan apa adanya alih-alih menduplikasi.
+    const query = new URLSearchParams(window.location.search);
+    if (query.get("code")) {
+      window.location.replace(`/auth/confirm${window.location.search}`);
+      return;
+    }
+
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const tipe = hash.get("type");
     const tujuan =

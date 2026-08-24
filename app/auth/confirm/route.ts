@@ -84,9 +84,15 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { error: gagal } = await supabase.auth.exchangeCodeForSession(code);
-    return ke(
-      gagal ? halamanSandi(type, { sebab: "exchange_code", pesan: gagal.message }) : tujuan
-    );
+    if (gagal) {
+      return ke(halamanSandi(type, { sebab: "exchange_code", pesan: gagal.message }));
+    }
+    // Kode tanpa `type` hanya muncul dari tautan yang mendarat di Site URL
+    // polos, yaitu undangan yang dikirim dari Supabase Dashboard. Permintaan
+    // reset dari halaman masuk selalu menyertakan type=recovery sendiri.
+    // Keduanya butuh halaman sandi, bukan dashboard: akun undangan belum
+    // punya kata sandi sama sekali.
+    return ke(next ?? halamanSandi(type ?? "invite"));
   }
 
   // Tidak ada parameter yang terbaca server. Kemungkinan token dikirim sebagai
