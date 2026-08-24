@@ -10,6 +10,8 @@
 //   /status <id>      - detail 1 device
 //   /listdevice       - daftar semua device_id terdaftar
 //   /offline          - device yang tidak kirim data >2 menit
+//   /resetwifi <id>   - antrekan reset konfigurasi WiFi 1 device
+//   /batalreset <id>  - batalkan perintah reset yang belum dijemput alat
 // ======================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -194,6 +196,202 @@ async function ambilReadingTerbaru(): Promise<Record<string, ReadingRow>> {
   return latest;
 }
 
+/**
+ * Perintah untuk alat tidak bisa dikirim langsung: alat berada di balik
+ * NAT dan hanya berbicara keluar. Yang bisa dilakukan bot adalah menaruh
+ * perintah di tabel `perintah_alat`, lalu alat menjemputnya sendiri pada
+ * siklus upload berikutnya (30 detik saat normal).
+ *
+ * Karena itu setiap jawaban ke pengguna harus menyebut keadaan alat.
+ * "Perintah terkirim" pada alat yang sedang mati adalah kalimat yang
+ * menyesatkan.
+ */
+type PerintahRow = {
+  id: string;
+  status: string;
+  created_at: string;
+  diambil_at: string | null;
+  selesai_at: string | null;
+};
+
+async function perintahAktif(deviceId: string): Promise<PerintahRow | null> {
+  const { data } = await supabase
+    .from("perintah_alat")
+    .select("id, status, created_at, diambil_at, selesai_at")
+    .eq("device_id", deviceId)
+    .eq("jenis", "reset_wifi")
+    .in("status", ["menunggu", "dieksekusi"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+/** Memastikan device benar-benar milik akun penelepon sebelum disentuh. */
+async function ambilDeviceMilik(
+  deviceId: string,
+  ownerId: string
+): Promise<{ device_id: string; nama: string | null; last_seen: string | null } | null> {
+  const { data } = await supabase
+    .from("devices")
+    .select("device_id, nama, last_seen")
+    .eq("device_id", deviceId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+/**
+ * Reset WiFi tidak bisa ditarik kembali setelah alat menjemputnya: begitu
+ * kredensial dihapus, satu-satunya jalan masuk adalah portal AP yang hanya
+ * terjangkau dari dekat alat. Jadi command ini sengaja bertahap — ketikan
+ * pertama menjelaskan akibatnya, ketikan kedua yang mengeksekusi. Menaruh
+ * tindakan ini pada jarak ketik yang sama dengan /status akan membuatnya
+ * tertekan tanpa sengaja.
+ */
+async function handleResetWifi(
+  chatId: number,
+  deviceId: string,
+  ownerId: string,
+  dikonfirmasi: boolean
+) {
+  if (!deviceId) {
+    await kirimPesan(
+      chatId,
+      "Sebutkan device-nya: `/resetwifi ALAT_1`. Lihat daftarnya dengan /listdevice."
+    );
+    return;
+  }
+
+  const device = await ambilDeviceMilik(deviceId, ownerId);
+  if (!device) {
+    await kirimPesan(
+      chatId,
+      `Device \`${deviceId}\` tidak ditemukan di akunmu. Gunakan /listdevice untuk lihat daftar device milikmu.`
+    );
+    return;
+  }
+
+  const namaTampil = device.nama || device.device_id;
+  const aktif = await perintahAktif(deviceId);
+
+  if (aktif?.status === "dieksekusi") {
+    await kirimPesan(
+      chatId,
+      `⏳ *${namaTampil}* sudah menjemput perintah reset pada ${formatWaktu(aktif.diambil_at)} ` +
+        `dan sekarang membuka portal *JatayuGuard-AP*.\n\n` +
+        `Sambungkan ponsel ke WiFi itu untuk memasukkan jaringan baru.`
+    );
+    return;
+  }
+
+  if (aktif?.status === "menunggu") {
+    await kirimPesan(
+      chatId,
+      `Sudah ada perintah reset yang menunggu untuk *${namaTampil}* sejak ${formatWaktu(aktif.created_at)}. ` +
+        `Alat akan menjemputnya saat online. Batalkan dengan \`/batalreset ${deviceId}\`.`
+    );
+    return;
+  }
+
+  if (!dikonfirmasi) {
+    await kirimPesan(
+      chatId,
+      `⚠️ *Konfirmasi reset WiFi — ${namaTampil}*\n\n` +
+        `Yang dihapus HANYA kredensial WiFi. ID device dan ambang batas tetap utuh.\n\n` +
+        `Setelah perintah dijemput, alat langsung restart dan membuka portal ` +
+        `*JatayuGuard-AP* selama 3 menit. Portal itu hanya terjangkau dari dekat alat, ` +
+        `jadi *harus ada orang di lokasi*. Selama belum dikonfigurasi ulang, alat tidak ` +
+        `mengirim data ke dashboard — pemantauan lokal dan alarm tetap jalan.\n\n` +
+        `Kalau memang begitu, ketik:\n\`/resetwifi ${deviceId} konfirmasi\``
+    );
+    return;
+  }
+
+  const { error } = await supabase.from("perintah_alat").insert({
+    device_id: deviceId,
+    jenis: "reset_wifi",
+    diminta_oleh: ownerId,
+    chat_id: String(chatId),
+  });
+
+  if (error) {
+    // Indeks unik parsial menahan perintah kedua yang menunggu. Itu bukan
+    // kegagalan sistem, melainkan pengguna menekan dua kali.
+    if (error.code === "23505") {
+      await kirimPesan(
+        chatId,
+        `Sudah ada perintah reset yang menunggu untuk *${namaTampil}*. Tidak ada yang ditambahkan.`
+      );
+      return;
+    }
+    console.error("Gagal menyimpan perintah reset:", error);
+    await kirimPesan(chatId, "Gagal menyimpan perintah. Coba lagi sebentar lagi.");
+    return;
+  }
+
+  const online = isOnline(device.last_seen);
+  await kirimPesan(
+    chatId,
+    `✅ Perintah reset WiFi diantrekan untuk *${namaTampil}*.\n\n` +
+      (online
+        ? `Alat sedang online, jadi perintah dijemput dalam ~30 detik. Tunggu sampai LCD ` +
+          `menampilkan *Reset WiFi*, lalu sambungkan ponsel ke *JatayuGuard-AP*.`
+        : `⚠️ Alat sedang *offline* (terakhir terlihat ${formatWaktu(device.last_seen)}). ` +
+          `Perintah menunggu sampai alat kembali online — pastikan ada orang di lokasi saat itu ` +
+          `terjadi, atau batalkan dengan \`/batalreset ${deviceId}\`.`)
+  );
+}
+
+/**
+ * Hanya berlaku selama alat belum menjemput perintahnya. Sesudah itu
+ * kredensial sudah terhapus dan tidak ada lagi yang bisa dibatalkan dari
+ * jauh — mengaku begitu lebih berguna daripada balasan "dibatalkan" yang
+ * sebenarnya tidak membatalkan apa pun.
+ */
+async function handleBatalReset(chatId: number, deviceId: string, ownerId: string) {
+  if (!deviceId) {
+    await kirimPesan(chatId, "Sebutkan device-nya: `/batalreset ALAT_1`.");
+    return;
+  }
+
+  const device = await ambilDeviceMilik(deviceId, ownerId);
+  if (!device) {
+    await kirimPesan(chatId, `Device \`${deviceId}\` tidak ditemukan di akunmu.`);
+    return;
+  }
+
+  const namaTampil = device.nama || device.device_id;
+
+  const { data: dibatalkan } = await supabase
+    .from("perintah_alat")
+    .update({ status: "dibatalkan" })
+    .eq("device_id", deviceId)
+    .eq("jenis", "reset_wifi")
+    .eq("status", "menunggu")
+    .select("id");
+
+  if (dibatalkan && dibatalkan.length > 0) {
+    await kirimPesan(chatId, `🚫 Perintah reset WiFi untuk *${namaTampil}* dibatalkan.`);
+    return;
+  }
+
+  const aktif = await perintahAktif(deviceId);
+  if (aktif?.status === "dieksekusi") {
+    await kirimPesan(
+      chatId,
+      `Terlambat: *${namaTampil}* sudah menjemput perintahnya pada ${formatWaktu(aktif.diambil_at)}. ` +
+        `Kredensial WiFi sudah terhapus dan hanya bisa diisi ulang lewat portal ` +
+        `*JatayuGuard-AP* di lokasi alat.`
+    );
+    return;
+  }
+
+  await kirimPesan(chatId, `Tidak ada perintah reset yang menunggu untuk *${namaTampil}*.`);
+}
+
 async function handleStart(chatId: number) {
   // Bot inilah yang paling tahu chat_id penggunanya, jadi dialah yang
   // seharusnya memberitahukannya. Sebelumnya website menyuruh pengguna
@@ -220,7 +418,9 @@ async function handleStart(chatId: number) {
     // menolak SELURUH pesan, bukan cuma bagian itu.
     `/status <id alat> — detail 1 device\n` +
     `/listdevice — daftar semua device terdaftar\n` +
-    `/offline — device yang sedang offline\n\n` +
+    `/offline — device yang sedang offline\n` +
+    `/resetwifi <id alat> — reset konfigurasi WiFi alat\n` +
+    `/batalreset <id alat> — batalkan perintah reset\n\n` +
     `_Untuk mengubah threshold/konfigurasi, gunakan website._`;
   await kirimPesan(chatId, pesan);
 }
@@ -398,6 +598,15 @@ Deno.serve(async (req) => {
     } else if (teks.startsWith("/status ")) {
       const deviceId = teks.replace("/status ", "").trim();
       await handleStatusSatu(chatId, deviceId, ownerId);
+    } else if (teks === "/resetwifi" || teks.startsWith("/resetwifi ")) {
+      // Argumen kedua yang berbunyi "konfirmasi" adalah pembeda antara
+      // permintaan penjelasan dan permintaan eksekusi.
+      const argumen = teks.slice("/resetwifi".length).trim().split(/\s+/).filter(Boolean);
+      const dikonfirmasi = (argumen[1] ?? "").toLowerCase() === "konfirmasi";
+      await handleResetWifi(chatId, argumen[0] ?? "", ownerId, dikonfirmasi);
+    } else if (teks === "/batalreset" || teks.startsWith("/batalreset ")) {
+      const deviceId = teks.slice("/batalreset".length).trim();
+      await handleBatalReset(chatId, deviceId, ownerId);
     } else if (teks.startsWith("/")) {
       await kirimPesan(chatId, "Command tidak dikenali. Ketik /start untuk lihat daftar command.");
     }
