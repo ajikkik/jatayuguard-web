@@ -14,6 +14,19 @@ type ChatTelegram = {
   label: string | null;
 };
 
+// Alat yang menjadi tanggung jawab akun ini. Bukan "alat yang boleh
+// dilihat": model tim di 03_update_rls_tim.sql membuat semua anggota
+// bisa melihat semua alat. Yang ditentukan di sini adalah ke mana
+// peringatan sebuah alat dikirim.
+type AlatSaya = {
+  id: string;
+  device_id: string;
+  nama: string | null;
+};
+
+// Enam digit, diturunkan dari chip alat, dipajang di portal WiFi dan LCD-nya.
+const POLA_KODE_KLAIM = /^\d{6}$/;
+
 // Chat pribadi Telegram berupa angka positif, grup/channel diawali "-".
 const POLA_CHAT_ID = /^-?\d{5,}$/;
 
@@ -38,6 +51,18 @@ export default function ProfilePage() {
   const [hasilUji, setHasilUji] = useState<Record<string, { ok: boolean; pesan: string }>>({});
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<string | null>(null);
   const [menghapus, setMenghapus] = useState<string | null>(null);
+
+  // Klaim alat. owner_id tidak pernah dikirim dari sini — fungsi
+  // klaim_alat() di database mengambilnya dari auth.uid(), sehingga
+  // tidak ada cara mengklaim alat atas nama akun orang lain.
+  const [alatSaya, setAlatSaya] = useState<AlatSaya[]>([]);
+  const [deviceIdKlaim, setDeviceIdKlaim] = useState("");
+  const [kodeKlaim, setKodeKlaim] = useState("");
+  const [mengklaim, setMengklaim] = useState(false);
+  const [errorKlaim, setErrorKlaim] = useState<string | null>(null);
+  const [suksesKlaim, setSuksesKlaim] = useState<string | null>(null);
+  const [konfirmasiLepas, setKonfirmasiLepas] = useState<string | null>(null);
+  const [melepas, setMelepas] = useState<string | null>(null);
 
   const [passwordBaru, setPasswordBaru] = useState("");
   const [konfirmasiPassword, setKonfirmasiPassword] = useState("");
@@ -72,11 +97,103 @@ export default function ProfilePage() {
       }
 
       setChats(daftar ?? []);
+
+      // Kegagalan query ini TIDAK membatalkan halaman: pengaturan
+      // Telegram dan kata sandi tetap berguna walau daftar alat gagal
+      // dimuat. Yang tidak boleh terjadi adalah daftar kosong yang
+      // terlihat seperti "kamu memang belum punya alat".
+      const { data: daftarAlat, error: errorAlat } = await supabase
+        .from("devices")
+        .select("id, device_id, nama")
+        .eq("owner_id", userData.user.id)
+        .order("nama");
+
+      if (errorAlat) {
+        setErrorKlaim("Gagal memuat daftar alat. Muat ulang halaman untuk mencoba lagi.");
+      } else {
+        setAlatSaya(daftarAlat ?? []);
+      }
+
       setLoading(false);
     }
     muat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleKlaimAlat(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorKlaim(null);
+    setSuksesKlaim(null);
+
+    const deviceId = deviceIdKlaim.trim();
+    const kode = kodeKlaim.trim();
+
+    if (!deviceId) {
+      setErrorKlaim("Isi ID alat persis seperti yang kamu ketik di portal WiFi alat.");
+      return;
+    }
+
+    if (!POLA_KODE_KLAIM.test(kode)) {
+      setErrorKlaim("Kode klaim berupa enam angka. Baca di layar alat atau di portal WiFi-nya.");
+      return;
+    }
+
+    if (alatSaya.some((a) => a.device_id === deviceId)) {
+      setErrorKlaim("Alat itu sudah jadi tanggung jawabmu.");
+      return;
+    }
+
+    setMengklaim(true);
+
+    // RPC, bukan update langsung ke tabel: owner_id dijaga trigger
+    // devices_jaga_owner supaya tidak bisa diubah lewat PATCH biasa.
+    const { data, error } = await supabase.rpc("klaim_alat", {
+      p_device_id: deviceId,
+      p_kode: kode,
+    });
+
+    setMengklaim(false);
+
+    if (error) {
+      // Pesan dari raise exception sudah ditulis untuk dibaca pengguna,
+      // jadi diteruskan apa adanya. 42883 berarti fungsinya belum ada —
+      // migrasi 07_klaim_alat.sql belum dijalankan di project ini.
+      setErrorKlaim(
+        error.code === "42883"
+          ? "Fitur klaim belum aktif di database. Jalankan migrasi 07_klaim_alat.sql."
+          : error.message || "Gagal mengklaim alat. Coba lagi."
+      );
+      return;
+    }
+
+    const alat = data as AlatSaya;
+    setAlatSaya((p) => [...p, { id: alat.id, device_id: alat.device_id, nama: alat.nama }]);
+    setDeviceIdKlaim("");
+    setKodeKlaim("");
+    setSuksesKlaim(
+      chats.length > 0
+        ? `${alat.nama || alat.device_id} sekarang jadi tanggung jawabmu. Peringatannya dikirim ke chat Telegram di bawah.`
+        : `${alat.nama || alat.device_id} sekarang jadi tanggung jawabmu. Tambahkan chat Telegram di bawah supaya peringatannya sampai.`
+    );
+  }
+
+  async function handleLepasAlat(deviceId: string) {
+    setKonfirmasiLepas(null);
+    setMelepas(deviceId);
+    setErrorKlaim(null);
+    setSuksesKlaim(null);
+
+    const { error } = await supabase.rpc("lepas_alat", { p_device_id: deviceId });
+
+    setMelepas(null);
+
+    if (error) {
+      setErrorKlaim(error.message || "Gagal melepas alat. Coba lagi.");
+      return;
+    }
+
+    setAlatSaya((p) => p.filter((a) => a.device_id !== deviceId));
+  }
 
   async function handleTambahChat(e: React.FormEvent) {
     e.preventDefault();
@@ -275,6 +392,133 @@ export default function ProfilePage() {
         <p className="mb-8 text-sm text-[var(--tinta-soft)]">
           Masuk sebagai <span className="text-[var(--tinta)]">{email}</span>
         </p>
+
+        <section className="kartu-kain mb-6 px-7 py-7">
+          <h2 className="label-arsip mb-2">Alat Tanggung Jawabmu</h2>
+          <p className="mb-5 text-sm text-[var(--tinta-soft)]">
+            Semua anggota tim bisa melihat semua alat di ruang pemantauan. Daftar ini
+            berbeda: ia menentukan ke mana peringatan sebuah alat dikirim. Alat yang tidak
+            punya penanggung jawab tetap merekam data, tapi peringatannya tidak dikirim ke
+            siapa pun.
+          </p>
+
+          {alatSaya.length === 0 ? (
+            <p className="mb-5 border-l-2 border-[var(--line)] px-3 py-2 text-sm text-[var(--tinta-soft)]">
+              Belum ada alat yang jadi tanggung jawabmu.
+            </p>
+          ) : (
+            <ul className="mb-6 divide-y divide-[var(--line)] border-y border-[var(--line)]">
+              {alatSaya.map((alat) => (
+                <li key={alat.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm text-[var(--tinta)]">
+                      {alat.nama || alat.device_id}
+                    </p>
+                    <p className="break-all font-mono text-xs text-[var(--tinta-soft)]">
+                      {alat.device_id}
+                    </p>
+                  </div>
+
+                  {/* Melepas alat berarti membungkam peringatannya sampai
+                      seseorang mengklaimnya lagi. Dikonfirmasi di tempat,
+                      sama seperti menghapus tujuan notifikasi. */}
+                  {konfirmasiLepas === alat.device_id ? (
+                    <span className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLepasAlat(alat.device_id)}
+                        disabled={melepas === alat.device_id}
+                        className="inline-flex h-9 items-center border border-[var(--bata)] px-3 text-xs text-[var(--bata)] transition hover:bg-[var(--bata-bg)] disabled:opacity-45"
+                      >
+                        {melepas === alat.device_id ? "Melepas…" : "Ya, lepas"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKonfirmasiLepas(null)}
+                        className="text-xs text-[var(--tinta-soft)] underline"
+                      >
+                        Batal
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setKonfirmasiLepas(alat.device_id)}
+                      className="inline-flex h-9 items-center border border-[var(--line)] px-3 text-xs text-[var(--tinta-soft)] transition hover:border-[var(--bata)] hover:text-[var(--bata)]"
+                    >
+                      Lepas
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form onSubmit={handleKlaimAlat}>
+            <h3 className="label-arsip mb-3 !text-[10px]">Klaim alat</h3>
+            <p className="mb-4 text-sm text-[var(--tinta-soft)]">
+              Nyalakan alatnya. Kode klaim enam angka muncul di layar LCD alat sesudah ia
+              tersambung, dan juga di portal WiFi <code className="bg-[var(--kain-dim)] px-1.5 py-0.5">JatayuGuard-AP</code>{" "}
+              saat alat belum dikonfigurasi. Kode itu hanya bisa dibaca dari depan alatnya —
+              itulah yang membuktikan alat ini memang kamu yang pegang.
+            </p>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="klaim-device-id" className="label-arsip mb-2 block !text-[10px]">
+                  ID Alat
+                </label>
+                <input
+                  id="klaim-device-id"
+                  value={deviceIdKlaim}
+                  onChange={(e) => setDeviceIdKlaim(e.target.value)}
+                  placeholder="contoh: GUDANG_A"
+                  className="w-full border border-[var(--line)] bg-[var(--input-bg)] h-11 px-3 text-sm outline-none focus:border-[var(--soga)]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="klaim-kode" className="label-arsip mb-2 block !text-[10px]">
+                  Kode klaim
+                </label>
+                <input
+                  id="klaim-kode"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={kodeKlaim}
+                  onChange={(e) => setKodeKlaim(e.target.value)}
+                  placeholder="6 angka"
+                  className="w-full border border-[var(--line)] bg-[var(--input-bg)] h-11 px-3 font-mono text-sm tracking-[0.2em] outline-none focus:border-[var(--soga)]"
+                />
+              </div>
+            </div>
+
+            {errorKlaim && (
+              <p
+                role="alert"
+                className="mt-4 border-l-2 border-[var(--bata)] bg-[var(--bata-bg)] px-3 py-2 text-sm text-[var(--bata)]"
+              >
+                {errorKlaim}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={mengklaim}
+                className="bg-[var(--soga)] inline-flex h-11 items-center px-5 text-sm font-medium text-[var(--kain)] transition hover:bg-[var(--soga-deep)] disabled:opacity-50"
+              >
+                {mengklaim ? "Mengklaim…" : "Klaim alat"}
+              </button>
+
+              {suksesKlaim && (
+                <span role="status" className="text-sm text-[var(--indigo)]">
+                  {suksesKlaim}
+                </span>
+              )}
+            </div>
+          </form>
+        </section>
 
         <section className="kartu-kain px-7 py-7">
           <h2 className="label-arsip mb-2">Notifikasi Telegram</h2>
