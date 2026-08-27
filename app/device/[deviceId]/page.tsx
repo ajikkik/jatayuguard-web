@@ -5,12 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import AppHeader from "@/components/AppHeader";
-import GrafikTren, { type TitikTren } from "@/components/GrafikTren";
+import GrafikTren, { type TitikTren as TitikGrafik } from "@/components/GrafikTren";
 import UnduhCsv from "@/components/UnduhCsv";
 import { AreaRangka, RangkaHalamanAlat } from "@/components/Rangka";
 import { formatAngka, waktuLengkap } from "@/lib/format";
 import { formatDurasi, type Kejadian } from "@/lib/kejadian";
 import type { RataAlat } from "@/lib/rata";
+import type { JawabanTren, TitikTren } from "@/lib/tren";
 import { SEGEL_KONDISI, LABEL_KONDISI } from "@/lib/status";
 
 // Tipe di halaman ini punya kolom tambahan (id) yang tidak dipakai
@@ -55,11 +56,12 @@ const RENTANG = {
 
 type KunciRentang = keyof typeof RENTANG;
 
-// Batas tarik per permintaan. Tabel readings tumbuh terus, jadi rentang
-// panjang tetap harus dibatasi; kalau kena batas kita beri tahu user
-// alih-alih diam-diam menampilkan potongan sebagian.
+// Batas tarik untuk TABEL pembacaan mentah saja. Grafik tidak lagi
+// bersumber dari sini: baris terbaru yang dipotong di angka ini tidak
+// pernah membentang seluruh rentang, sehingga grafik 7 dan 30 hari dulu
+// menampilkan potongan jam yang sama persis dengan grafik 24 jam.
+// Titik grafik sekarang diringkas per ember waktu di server (/api/tren).
 const BATAS_TARIK = 1500;
-const MAKS_TITIK_GRAFIK = 400;
 const MAKS_BARIS_TABEL = 100;
 
 const KOLOM = [
@@ -72,21 +74,6 @@ const KOLOM = [
 ] as const;
 
 type KunciKolom = (typeof KOLOM)[number]["kunci"];
-
-/** Rata-ratakan per kelompok kecil supaya jumlah titik tidak melebihi lebar piksel grafik. */
-function ringkasTitik(titik: TitikTren[], maks = MAKS_TITIK_GRAFIK): TitikTren[] {
-  if (titik.length <= maks) return titik;
-  const ukuran = Math.ceil(titik.length / maks);
-  const hasil: TitikTren[] = [];
-  for (let i = 0; i < titik.length; i += ukuran) {
-    const potong = titik.slice(i, i + ukuran);
-    hasil.push({
-      waktu: potong[potong.length - 1].waktu,
-      nilai: potong.reduce((s, t) => s + t.nilai, 0) / potong.length,
-    });
-  }
-  return hasil;
-}
 
 export default function DeviceDetailPage() {
   const params = useParams<{ deviceId: string }>();
@@ -107,6 +94,9 @@ export default function DeviceDetailPage() {
     naik: false,
   });
   const [rata, setRata] = useState<RataAlat | null>(null);
+  const [tren, setTren] = useState<TitikTren[]>([]);
+  const [jumlahTren, setJumlahTren] = useState(0);
+  const [errorTren, setErrorTren] = useState<string | null>(null);
   const [kejadian, setKejadian] = useState<Kejadian[]>([]);
   const [memuatKejadian, setMemuatKejadian] = useState(false);
   const [errorKejadian, setErrorKejadian] = useState<string | null>(null);
@@ -190,6 +180,37 @@ export default function DeviceDetailPage() {
     [params.deviceId]
   );
 
+  // Titik grafik diringkas di server dari SELURUH pembacaan dalam rentang,
+  // per ember waktu selebar rentang dibagi jumlah ember. Sebelumnya grafik
+  // memakai 1.500 baris terbaru yang dimuat halaman ini — begitu alat
+  // mengirim lebih dari itu, rentang 24 jam / 7 hari / 30 hari menghasilkan
+  // grafik yang sama persis karena ketiganya hanya memuat ujung datanya.
+  const muatTren = useCallback(
+    async (kunci: KunciRentang) => {
+      setErrorTren(null);
+      try {
+        const res = await fetch(
+          `/api/tren?device=${encodeURIComponent(params.deviceId)}&rentang=${kunci}`
+        );
+        if (!res.ok) {
+          const badan = await res.json().catch(() => null);
+          setErrorTren(badan?.error ?? "Gagal memuat data grafik.");
+          setTren([]);
+          setJumlahTren(0);
+          return;
+        }
+        const badan = (await res.json()) as JawabanTren;
+        setTren(badan.titik ?? []);
+        setJumlahTren(badan.jumlahPembacaan ?? 0);
+      } catch {
+        setErrorTren("Gagal memuat data grafik. Periksa koneksi internetmu.");
+        setTren([]);
+        setJumlahTren(0);
+      }
+    },
+    [params.deviceId]
+  );
+
   // Kejadian diturunkan di server dari SELURUH pembacaan dalam rentang,
   // bukan dari 1.500 baris yang dimuat halaman ini. Kejadian yang dihitung
   // dari data terpotong bukan cuma kurang lengkap — durasinya salah dan
@@ -224,6 +245,7 @@ export default function DeviceDetailPage() {
       const ok = await muatDevice();
       if (ok) {
         await muatReadings(rentang);
+        muatTren(rentang);
         muatKejadian(rentang);
         muatRata(rentang);
       }
@@ -238,6 +260,7 @@ export default function DeviceDetailPage() {
     setMemuatRentang(true);
     muatKejadian(kunci);
     muatRata(kunci);
+    muatTren(kunci);
     await muatReadings(kunci);
     setMemuatRentang(false);
   }
@@ -376,24 +399,23 @@ export default function DeviceDetailPage() {
     })
     .slice(0, MAKS_BARIS_TABEL);
 
-  // Grafik butuh urutan menaik (kiri = lama, kanan = baru).
-  const menaik = [...readings].reverse();
-  // Pembacaan tanpa nilai DIBUANG dari grafik, bukan dijadikan nol.
-  // Nol adalah suhu yang sah; menggambarnya sebagai nol akan mengarang
-  // penurunan drastis yang tidak pernah terjadi. Dan null yang lolos ke
-  // perhitungan koordinat menghasilkan NaN, yang merusak seluruh path SVG.
-  const titikDari = (ambil: (r: Reading) => number | null) =>
-    ringkasTitik(
-      menaik
-        .filter((r) => ambil(r) != null)
-        .map((r) => ({ waktu: new Date(r.created_at).getTime(), nilai: ambil(r) as number }))
-    );
+  // Ember tanpa nilai DIBUANG dari grafik, bukan dijadikan nol. Nol adalah
+  // suhu yang sah; menggambarnya sebagai nol akan mengarang penurunan
+  // drastis yang tidak pernah terjadi. Dan null yang lolos ke perhitungan
+  // koordinat menghasilkan NaN, yang merusak seluruh path SVG.
+  const titikDari = (ambil: (t: TitikTren) => number | null): TitikGrafik[] =>
+    tren
+      .filter((t) => ambil(t) != null)
+      .map((t) => ({ waktu: t.waktu, nilai: ambil(t) as number }));
 
-  const titikSuhu = titikDari((r) => r.suhu);
-  const titikHum = titikDari((r) => r.kelembapan);
-  const titikUv = titikDari((r) => r.nilai_uv);
-  const pembacaanGagal = menaik.filter((r) => r.suhu == null || r.kelembapan == null).length;
-  const diringkas = titikSuhu.length < menaik.length;
+  const titikSuhu = titikDari((t) => t.suhu);
+  const titikHum = titikDari((t) => t.kelembapan);
+  const titikUv = titikDari((t) => t.uv);
+  // Ember yang sama sekali tidak punya suhu/kelembapan berarti seluruh
+  // pembacaan di dalamnya gagal terukur — itu yang dilaporkan, bukan
+  // jumlah baris mentah, karena grafik memang digambar per ember.
+  const emberGagal = tren.filter((t) => t.suhu == null || t.kelembapan == null).length;
+  const diringkas = jumlahTren > tren.length;
 
   // Granularitas label sumbu mengikuti rentang data yang BENAR-BENAR ada,
   // bukan rentang yang dipilih. Kalau alat cuma sempat mengirim satu hari
@@ -590,16 +612,22 @@ export default function DeviceDetailPage() {
             />
           </div>
 
-          {(terpotong || diringkas || pembacaanGagal > 0) && (
+          {errorTren && (
+            <p role="alert" className="mt-6 text-xs text-[var(--bata)]">
+              {errorTren}
+            </p>
+          )}
+
+          {(diringkas || emberGagal > 0) && (
             <p className="mt-6 text-xs text-[var(--tinta-soft)]">
-              {terpotong && `Menampilkan ${BATAS_TARIK.toLocaleString("id-ID")} pembacaan terbaru dalam rentang ini. `}
-              {diringkas && `Titik dirata-ratakan per kelompok agar grafik tetap terbaca. `}
+              {diringkas &&
+                `${jumlahTren.toLocaleString("id-ID")} pembacaan dirata-ratakan menjadi ${tren.length.toLocaleString("id-ID")} titik agar grafik tetap terbaca. `}
               {/* Dibuang diam-diam akan membuat grafik terlihat mulus padahal
                   sebagian datanya tidak ada — justru hal yang perlu diketahui.
                   Kata-katanya netral karena penyebabnya bisa sensor gagal
                   baca ATAU alat yang memang tidak mengukur besaran itu. */}
-              {pembacaanGagal > 0 &&
-                `${pembacaanGagal} pembacaan tidak menyertakan suhu/kelembapan dan tidak digambar.`}
+              {emberGagal > 0 &&
+                `${emberGagal} titik tidak menyertakan suhu/kelembapan dan tidak digambar.`}
             </p>
           )}
         </div>
@@ -733,6 +761,10 @@ export default function DeviceDetailPage() {
                 <p className="mt-4 text-xs text-[var(--tinta-soft)]">
                   Menampilkan {MAKS_BARIS_TABEL} pembacaan terbaru dari {readings.length.toLocaleString("id-ID")} dalam
                   rentang ini.
+                  {/* Tabel memang hanya memuat baris terbaru; grafik dan
+                      riwayat kejadian di atas tetap meliput seluruh rentang. */}
+                  {terpotong &&
+                    ` Tabel dibatasi ${BATAS_TARIK.toLocaleString("id-ID")} pembacaan terbaru — grafik dan riwayat kejadian tetap meliput seluruh rentang.`}
                 </p>
               )}
             </div>

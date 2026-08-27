@@ -14,9 +14,8 @@ type Props = {
   /**
    * Rata-rata seluruh rentang, digambar sebagai garis acuan tipis.
    * Dihitung di server dari SEMUA pembacaan dalam rentang, bukan dari titik
-   * yang digambar di sini — grafik dibatasi 1.500 baris dan titiknya sudah
-   * diringkas per kelompok, jadi merata-ratakannya lagi bukan rata-rata
-   * rentang yang sebenarnya.
+   * yang digambar di sini — titik grafik sudah diringkas per ember waktu,
+   * jadi merata-ratakannya lagi bukan rata-rata rentang yang sebenarnya.
    */
   rata?: number | null;
   /** Warna garis, mis. "var(--soga)". Satu seri per grafik. */
@@ -145,6 +144,20 @@ export default function GrafikTren({
     setAktif(Math.min(Math.max(i, 0), data.length - 1));
   }
 
+  // Di layar sentuh, tooltip ditahan sampai user menyentuh tempat lain —
+  // jari yang diangkat bukan tanda "sudah selesai membaca", beda dengan
+  // kursor yang meninggalkan area grafik.
+  useEffect(() => {
+    if (aktif == null) return;
+    function luar(e: PointerEvent) {
+      if (e.pointerType === "mouse") return;
+      if (wadahRef.current?.contains(e.target as Node)) return;
+      setAktif(null);
+    }
+    document.addEventListener("pointerdown", luar);
+    return () => document.removeEventListener("pointerdown", luar);
+  }, [aktif]);
+
   function handleKey(e: React.KeyboardEvent) {
     if (data.length === 0) return;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
@@ -198,12 +211,34 @@ export default function GrafikTren({
         </span>
       </div>
 
+      {/* Sentuhan: sekali sentuh langsung memilih titik, dan geser
+          mendatar menyusuri grafik. touchAction "pan-y" menyerahkan
+          gulir vertikal ke halaman tapi menahan geser mendatar untuk
+          grafik; select-none mencegah tahan-jari berubah jadi seleksi
+          teks — yang selama ini membuat grafik nyaris tidak bisa
+          dibaca di ponsel. */}
       <div
         ref={wadahRef}
-        className="relative w-full"
-        style={{ minHeight: TINGGI }}
-        onPointerMove={(e) => pilihTerdekat(e.clientX)}
-        onPointerLeave={() => setAktif(null)}
+        className="relative w-full select-none"
+        style={{
+          minHeight: TINGGI,
+          touchAction: "pan-y",
+          WebkitUserSelect: "none",
+          WebkitTouchCallout: "none",
+        }}
+        onPointerDown={(e) => {
+          if (e.pointerType !== "mouse") e.currentTarget.setPointerCapture(e.pointerId);
+          pilihTerdekat(e.clientX);
+        }}
+        // Untuk sentuhan, pointermove hanya datang selama jari menempel;
+        // buttons > 0 menyaring gerakan sisa setelah jari diangkat.
+        onPointerMove={(e) => {
+          if (e.pointerType !== "mouse" && e.buttons === 0) return;
+          pilihTerdekat(e.clientX);
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") setAktif(null);
+        }}
       >
         {data.length === 0 ? (
           <div className="flex h-[210px] items-center justify-center border border-[var(--line)] text-sm text-[var(--tinta-soft)]">
